@@ -1,0 +1,27 @@
+[submodule "dependencies/libraries"]
+	path = dependencies/libraries
+	url = https://github.com/corydouthat/libraries.git
+[submodule "dependencies/fastgltf"]
+	path = dependencies/fastgltf
+	url = https://github.com/spnda/fastgltf.git
+[submodule "dependencies/fmt"]
+	path = dependencies/fmt
+	url = https://github.com/fmtlib/fmt.git
+[submodule "dependencies/imgui"]
+	path = dependencies/imgui
+	url = https://github.com/ocornut/imgui.git
+[submodule "dependencies/SDL"]
+	path = dependencies/SDL
+	url = https://github.com/libsdl-org/SDL.git
+[submodule "dependencies/stb"]
+	path = dependencies/stb
+	url = https://github.com/nothings/stb.git
+[submodule "dependencies/vk-bootstrap"]
+	path = dependencies/vk-bootstrap
+	url = https://github.com/charles-lunarg/vk-bootstrap.git
+[submodule "dependencies/VulkanMemoryAllocator"]
+	path = dependencies/VulkanMemoryAllocator
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+[submodule "dependencies/volk"]
+	path = dependencies/volk
+	url = https://github.com/zeux/volk.git
