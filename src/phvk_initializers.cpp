@@ -9,7 +9,7 @@
 #include <phvk_initializers.h>
 
 //> init_cmd
-VkCommandPoolCreateInfo phvk_init::command_pool_create_info(uint32_t queueFamilyIndex,
+VkCommandPoolCreateInfo vkinit::command_pool_create_info(uint32_t queueFamilyIndex,
     VkCommandPoolCreateFlags flags /*= 0*/)
 {
     VkCommandPoolCreateInfo info = {};
@@ -21,7 +21,7 @@ VkCommandPoolCreateInfo phvk_init::command_pool_create_info(uint32_t queueFamily
 }
 
 
-VkCommandBufferAllocateInfo phvk_init::command_buffer_allocate_info(
+VkCommandBufferAllocateInfo vkinit::command_buffer_allocate_info(
     VkCommandPool pool, uint32_t count /*= 1*/)
 {
     VkCommandBufferAllocateInfo info = {};
@@ -36,7 +36,7 @@ VkCommandBufferAllocateInfo phvk_init::command_buffer_allocate_info(
 //< init_cmd
 // 
 //> init_cmd_draw
-VkCommandBufferBeginInfo phvk_init::command_buffer_begin_info(VkCommandBufferUsageFlags flags /*= 0*/)
+VkCommandBufferBeginInfo vkinit::command_buffer_begin_info(VkCommandBufferUsageFlags flags /*= 0*/)
 {
     VkCommandBufferBeginInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -49,7 +49,7 @@ VkCommandBufferBeginInfo phvk_init::command_buffer_begin_info(VkCommandBufferUsa
 //< init_cmd_draw
 
 //> init_sync
-VkFenceCreateInfo phvk_init::fence_create_info(VkFenceCreateFlags flags /*= 0*/)
+VkFenceCreateInfo vkinit::fence_create_info(VkFenceCreateFlags flags /*= 0*/)
 {
     VkFenceCreateInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
@@ -60,7 +60,7 @@ VkFenceCreateInfo phvk_init::fence_create_info(VkFenceCreateFlags flags /*= 0*/)
     return info;
 }
 
-VkSemaphoreCreateInfo phvk_init::semaphore_create_info(VkSemaphoreCreateFlags flags /*= 0*/)
+VkSemaphoreCreateInfo vkinit::semaphore_create_info(VkSemaphoreCreateFlags flags /*= 0*/)
 {
     VkSemaphoreCreateInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -71,7 +71,7 @@ VkSemaphoreCreateInfo phvk_init::semaphore_create_info(VkSemaphoreCreateFlags fl
 //< init_sync
 
 //> init_submit
-VkSemaphoreSubmitInfo phvk_init::semaphore_submit_info(VkPipelineStageFlags2 stageMask, VkSemaphore semaphore)
+VkSemaphoreSubmitInfo vkinit::semaphore_submit_info(VkPipelineStageFlags2 stageMask, VkSemaphore semaphore)
 {
 	VkSemaphoreSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
@@ -84,7 +84,7 @@ VkSemaphoreSubmitInfo phvk_init::semaphore_submit_info(VkPipelineStageFlags2 sta
 	return submitInfo;
 }
 
-VkCommandBufferSubmitInfo phvk_init::command_buffer_submit_info(VkCommandBuffer cmd)
+VkCommandBufferSubmitInfo vkinit::command_buffer_submit_info(VkCommandBuffer cmd)
 {
 	VkCommandBufferSubmitInfo info{};
 	info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
@@ -95,7 +95,7 @@ VkCommandBufferSubmitInfo phvk_init::command_buffer_submit_info(VkCommandBuffer 
 	return info;
 }
 
-VkSubmitInfo2 phvk_init::submit_info(VkCommandBufferSubmitInfo* cmd, VkSemaphoreSubmitInfo* signalSemaphoreInfo,
+VkSubmitInfo2 vkinit::submit_info(VkCommandBufferSubmitInfo* cmd, VkSemaphoreSubmitInfo* signalSemaphoreInfo,
     VkSemaphoreSubmitInfo* waitSemaphoreInfo)
 {
     VkSubmitInfo2 info = {};
@@ -115,7 +115,7 @@ VkSubmitInfo2 phvk_init::submit_info(VkCommandBufferSubmitInfo* cmd, VkSemaphore
 }
 //< init_submit
 
-VkPresentInfoKHR phvk_init::present_info()
+VkPresentInfoKHR vkinit::present_info()
 {
     VkPresentInfoKHR info = {};
     info.sType =  VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -131,7 +131,7 @@ VkPresentInfoKHR phvk_init::present_info()
 }
 
 //> color_info
-VkRenderingAttachmentInfo phvk_init::attachment_info(
+VkRenderingAttachmentInfo vkinit::attachment_info(
     VkImageView view, VkClearValue* clear ,VkImageLayout layout /*= VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL*/)
 {
     VkRenderingAttachmentInfo colorAttachment {};
@@ -150,7 +150,7 @@ VkRenderingAttachmentInfo phvk_init::attachment_info(
 }
 //< color_info
 //> depth_info
-VkRenderingAttachmentInfo phvk_init::depth_attachment_info(
+VkRenderingAttachmentInfo vkinit::depth_attachment_info(
     VkImageView view, VkImageLayout layout /*= VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL*/)
 {
     VkRenderingAttachmentInfo depthAttachment {};
@@ -167,7 +167,7 @@ VkRenderingAttachmentInfo phvk_init::depth_attachment_info(
 }
 //< depth_info
 //> render_info
-VkRenderingInfo phvk_init::rendering_info(VkExtent2D renderExtent, VkRenderingAttachmentInfo* colorAttachment,
+VkRenderingInfo vkinit::rendering_info(VkExtent2D renderExtent, VkRenderingAttachmentInfo* colorAttachment,
     VkRenderingAttachmentInfo* depthAttachment)
 {
     VkRenderingInfo renderInfo {};
@@ -185,7 +185,7 @@ VkRenderingInfo phvk_init::rendering_info(VkExtent2D renderExtent, VkRenderingAt
 }
 //< render_info
 //> subresource
-VkImageSubresourceRange phvk_init::image_subresource_range(VkImageAspectFlags aspectMask)
+VkImageSubresourceRange vkinit::image_subresource_range(VkImageAspectFlags aspectMask)
 {
     VkImageSubresourceRange subImage {};
     subImage.aspectMask = aspectMask;
@@ -200,7 +200,7 @@ VkImageSubresourceRange phvk_init::image_subresource_range(VkImageAspectFlags as
 
 
 
-VkDescriptorSetLayoutBinding phvk_init::descriptorset_layout_binding(VkDescriptorType type, VkShaderStageFlags stageFlags,
+VkDescriptorSetLayoutBinding vkinit::descriptorset_layout_binding(VkDescriptorType type, VkShaderStageFlags stageFlags,
     uint32_t binding)
 {
     VkDescriptorSetLayoutBinding setbind = {};
@@ -213,7 +213,7 @@ VkDescriptorSetLayoutBinding phvk_init::descriptorset_layout_binding(VkDescripto
     return setbind;
 }
 
-VkDescriptorSetLayoutCreateInfo phvk_init::descriptorset_layout_create_info(VkDescriptorSetLayoutBinding* bindings,
+VkDescriptorSetLayoutCreateInfo vkinit::descriptorset_layout_create_info(VkDescriptorSetLayoutBinding* bindings,
     uint32_t bindingCount)
 {
     VkDescriptorSetLayoutCreateInfo info = {};
@@ -227,7 +227,7 @@ VkDescriptorSetLayoutCreateInfo phvk_init::descriptorset_layout_create_info(VkDe
     return info;
 }
 
-VkWriteDescriptorSet phvk_init::write_descriptor_image(VkDescriptorType type, VkDescriptorSet dstSet,
+VkWriteDescriptorSet vkinit::write_descriptor_image(VkDescriptorType type, VkDescriptorSet dstSet,
     VkDescriptorImageInfo* imageInfo, uint32_t binding)
 {
     VkWriteDescriptorSet write = {};
@@ -243,7 +243,7 @@ VkWriteDescriptorSet phvk_init::write_descriptor_image(VkDescriptorType type, Vk
     return write;
 }
 
-VkWriteDescriptorSet phvk_init::write_descriptor_buffer(VkDescriptorType type, VkDescriptorSet dstSet,
+VkWriteDescriptorSet vkinit::write_descriptor_buffer(VkDescriptorType type, VkDescriptorSet dstSet,
     VkDescriptorBufferInfo* bufferInfo, uint32_t binding)
 {
     VkWriteDescriptorSet write = {};
@@ -259,7 +259,7 @@ VkWriteDescriptorSet phvk_init::write_descriptor_buffer(VkDescriptorType type, V
     return write;
 }
 
-VkDescriptorBufferInfo phvk_init::buffer_info(VkBuffer buffer, VkDeviceSize offset, VkDeviceSize range)
+VkDescriptorBufferInfo vkinit::buffer_info(VkBuffer buffer, VkDeviceSize offset, VkDeviceSize range)
 {
     VkDescriptorBufferInfo binfo {};
     binfo.buffer = buffer;
@@ -269,7 +269,7 @@ VkDescriptorBufferInfo phvk_init::buffer_info(VkBuffer buffer, VkDeviceSize offs
 }
 
 //> image_set
-VkImageCreateInfo phvk_init::image_create_info(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent)
+VkImageCreateInfo vkinit::image_create_info(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent)
 {
     VkImageCreateInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -293,7 +293,7 @@ VkImageCreateInfo phvk_init::image_create_info(VkFormat format, VkImageUsageFlag
     return info;
 }
 
-VkImageViewCreateInfo phvk_init::imageview_create_info(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags)
+VkImageViewCreateInfo vkinit::imageview_create_info(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags)
 {
     // build a image-view for the depth image to use for rendering
     VkImageViewCreateInfo info = {};
@@ -312,7 +312,7 @@ VkImageViewCreateInfo phvk_init::imageview_create_info(VkFormat format, VkImage 
     return info;
 }
 //< image_set
-VkPipelineLayoutCreateInfo phvk_init::pipeline_layout_create_info()
+VkPipelineLayoutCreateInfo vkinit::pipeline_layout_create_info()
 {
     VkPipelineLayoutCreateInfo info {};
     info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -327,7 +327,7 @@ VkPipelineLayoutCreateInfo phvk_init::pipeline_layout_create_info()
     return info;
 }
 
-VkPipelineShaderStageCreateInfo phvk_init::pipeline_shader_stage_create_info(VkShaderStageFlagBits stage,
+VkPipelineShaderStageCreateInfo vkinit::pipeline_shader_stage_create_info(VkShaderStageFlagBits stage,
     VkShaderModule shaderModule,
     const char * entry)
 {

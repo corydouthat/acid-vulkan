@@ -7,9 +7,9 @@
 
 #pragma once
 
-#include <phvk_types.h>
+#include "phvk_types.h"
 
-namespace phvk_init {
+namespace vkinit {
 //> init_cmd
 VkCommandPoolCreateInfo command_pool_create_info(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags = 0);
 VkCommandBufferAllocateInfo command_buffer_allocate_info(VkCommandPool pool, uint32_t count = 1);
@@ -53,4 +53,4 @@ VkPipelineLayoutCreateInfo pipeline_layout_create_info();
 VkPipelineShaderStageCreateInfo pipeline_shader_stage_create_info(VkShaderStageFlagBits stage,
     VkShaderModule shaderModule,
     const char * entry = "main");
-} // namespace phvk_init
+} // namespace vkinit

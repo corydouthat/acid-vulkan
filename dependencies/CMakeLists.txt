@@ -24,6 +24,7 @@ target_include_directories(imgui PUBLIC
     imgui
     #imgui/backends
 )
+target_link_libraries(dependencies INTERFACE imgui)
 
 # Add libraries
 add_subdirectory(libraries libraries)
@@ -36,6 +37,7 @@ target_link_libraries(dependencies INTERFACE SDL2::SDL2)
 # Add stb (header-only library, no CMakeLists.txt required)
 add_library(stb INTERFACE)
 target_include_directories(stb INTERFACE stb)
+target_link_libraries(dependencies INTERFACE stb)
 
 # Add vk-bootstrap
 add_subdirectory(vk-bootstrap vk-bootstrap)
