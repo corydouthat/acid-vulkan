@@ -20,12 +20,8 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 add_executable(acid-vulkan 
 	main.cpp
 	src/phvk_engine.cpp
-	src/phvk_engine.h
 	src/phvk_images.cpp
-	src/phvk_images.h
 	src/phvk_initializers.cpp
-	src/phvk_initializers.h
-	src/phvk_types.h
 )
 
 # Set target include directories
