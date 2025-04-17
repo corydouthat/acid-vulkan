@@ -1,6 +1,7 @@
 // Copyright (c) 2025, Cory Douthat
+// Based on vkguide.net - see LICENSE.txt
 //
-// Acid Game Engine - Vulkan
+// Acid Graphics Engine - Vulkan (Ver 1.3-1.4)
 // Engine class
 
 #include "phvk_engine.h"
@@ -10,13 +11,26 @@
 
 #include "phvk_types.h"
 #include "phvk_initializers.h"
+
+#include <VkBootstrap.h> 
+
+#include <array>
+#include <iostream>
+#include <fstream>
+
+#include "imgui.h"
+//#include "imgui_impl_sdl2.h"
+//#include "imgui_impl_vulkan.h"
+
+#define VMA_IMPLEMENTATION  // Must include in exactly ONE cpp file
+#include "vk_mem_alloc.h"   // May be included elsewhere w/o VMA_IMPLEMENTATION
+
 #include "phvk_images.h"
+#include "phvk_pipelines.h"
+#include "phvk_descriptors.h"
 
-// Bootstrap library
-#include "VkBootstrap.h"
-
-#include <chrono>
-#include <thread>
+//#include <chrono>
+//#include <thread>
 
 // Singleton instance of the engine
 phVkEngine* loaded_engine = nullptr;
@@ -54,6 +68,8 @@ void phVkEngine::init()
     initSwapchain();
     initCommands();
     initSyncStructures();
+    initDescriptors();
+	initPipelines();
 
     is_initialized = true;
 }
@@ -65,7 +81,12 @@ void phVkEngine::cleanup()
 		// Objects have interdependencies, 
         // Generally should delete in reverse order of creation
 
-        vkDeviceWaitIdle(device);  // Wait for GPU to finish
+        // Wait for GPU to finish
+        vkDeviceWaitIdle(device);
+
+        // Flush the global deletion queue
+		main_delete_queue.flush();
+
         for (int i = 0; i < FRAME_OVERLAP; i++) {
             // Note: destroying the command pool also destroys buffers allocated from it
             vkDestroyCommandPool(device, frames[i].command_pool, nullptr);
@@ -74,6 +95,8 @@ void phVkEngine::cleanup()
             vkDestroyFence(device, frames[i].render_fence, nullptr);
             vkDestroySemaphore(device, frames[i].render_semaphore, nullptr);
             vkDestroySemaphore(device, frames[i].swapchain_semaphore, nullptr);
+
+			frames[i].delete_queue.flush();
         }
 
         destroySwapchain();
@@ -95,8 +118,15 @@ void phVkEngine::draw()
 {
     // Using vkinit and vkutil functions below, naming style differs
 
+
+    // *** Setup ***
+
     // GPU render fence wait (timeout 1s)
     VK_CHECK(vkWaitForFences(device, 1, &getCurrentFrame().render_fence, true, 1000000000));
+
+    // Delete objects from the last frame
+    getCurrentFrame().delete_queue.flush();
+
     // Reset render fence
     VK_CHECK(vkResetFences(device, 1, &getCurrentFrame().render_fence));
 
@@ -115,31 +145,45 @@ void phVkEngine::draw()
     VkCommandBufferBeginInfo cmd_begin_info = 
         vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
+
+
+    // *** Recording ***
+
+    draw_extent.width = draw_image.extent.width;
+    draw_extent.height = draw_image.extent.height;
+
     // Start recording
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmd_begin_info));
 
     // Transition swapchain image to writeable layout
-    vkutil::transition_image(cmd, swapchain_images[swapchain_img_index], VK_IMAGE_LAYOUT_UNDEFINED, 
-        VK_IMAGE_LAYOUT_GENERAL);
+	// Will be overwritten so older layout doesn't matter
+    vkutil::transition_image(cmd, draw_image.image, 
+        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-    // Flash screen over a 120 frame period
-    VkClearColorValue clear_color_value;
-    float flash = std::abs(std::sin(frame_number / 120.f));
-    clear_color_value = { { 0.0f, 0.0f, flash, 1.0f } };
+    // Render the draw image
+    drawBackground(cmd);
 
-    // Configure image range object
-    VkImageSubresourceRange clear_range = vkinit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
+	// Transition draw and swapchain image into their respective transfer layouts
+    vkutil::transition_image(cmd, draw_image.image, 
+        VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    vkutil::transition_image(cmd, swapchain_images[swapchain_img_index], 
+        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-    // Clear to color
-    vkCmdClearColorImage(cmd, swapchain_images[swapchain_img_index], VK_IMAGE_LAYOUT_GENERAL, 
-        &clear_color_value, 1, &clear_range);
+    // Copy draw image to swapchain image
+    vkutil::copy_image_to_image(cmd, draw_image.image, 
+        swapchain_images[swapchain_img_index], draw_extent, swapchain_extent);
 
     // Change the swapchain image layout to presentable mode
-    vkutil::transition_image(cmd, swapchain_images[swapchain_img_index], VK_IMAGE_LAYOUT_GENERAL, 
-        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+    vkutil::transition_image(cmd, swapchain_images[swapchain_img_index], 
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     // End command buffer recording
     VK_CHECK(vkEndCommandBuffer(cmd));
+
+
+
+
+    // *** Present ***
 
     // Setup queue submission configurations
     VkCommandBufferSubmitInfo cmd_info = vkinit::command_buffer_submit_info(cmd);
@@ -170,6 +214,30 @@ void phVkEngine::draw()
 
     // Increment frame count
     frame_number++;
+}
+
+void phVkEngine::drawBackground(VkCommandBuffer cmd)
+{
+    // Flash screen over a 120 frame period
+    VkClearColorValue clear_color_value;
+    float flash = std::abs(std::sin(frame_number / 120.f));
+    clear_color_value = { { 0.0f, 0.0f, flash, 1.0f } };
+
+    // Configure image range object
+    VkImageSubresourceRange clear_range = vkinit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
+
+
+    // *** Gradient Comput Shader ***
+    
+    // Bind compute pipeline - gradient shader
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, gradient_pipeline);
+
+    // Bind descriptor set containing the compute draw image
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, gradient_pipeline_layout, 0, 1, &draw_image_descriptors, 0, nullptr);
+
+    // Dispatch compute pipeline
+    // Using a 16x16 workgroup size so we need to divide by it
+    vkCmdDispatch(cmd, std::ceil(draw_extent.width / 16.0), std::ceil(draw_extent.height / 16.0), 1);
 }
 
 void phVkEngine::run()
@@ -310,11 +378,76 @@ void phVkEngine::initVulkan()
     graphics_queue = vkb_device.get_queue(vkb::QueueType::graphics).value();
     graphics_queue_family = vkb_device.get_queue_index(vkb::QueueType::graphics).value();
 
+
+    // *** Init Vulkan Memory Allocator (VMA) ***
+    VmaAllocatorCreateInfo allocator_info = {};
+    allocator_info.physicalDevice = physical_device;
+    allocator_info.device = device;
+    allocator_info.instance = instance;
+    allocator_info.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+    vmaCreateAllocator(&allocator_info, &allocator);
+
+    // Add memory allocator to delete queue
+    main_delete_queue.push_function([&]()
+        {
+            vmaDestroyAllocator(allocator);
+        });
+
 }
 
+// Initializes both the swapchain and Vulkan drawing image
 void phVkEngine::initSwapchain()
 {
+    // *** Init Swapchain ***
     createSwapchain(window_extent.width, window_extent.height);
+
+
+
+	// *** Init Draw Image ***
+    
+    // Draw image size will match the window
+    VkExtent3D draw_image_extent = 
+    {
+        window_extent.width,
+        window_extent.height,
+        1
+    };
+
+    // Draw format hardcoded
+    // 64 bits per pixel
+    // May be overkill, but useful in some cases
+    draw_image.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    draw_image.extent = draw_image_extent;
+
+    // Define image usages
+    VkImageUsageFlags draw_image_usages{};
+    draw_image_usages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    draw_image_usages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    draw_image_usages |= VK_IMAGE_USAGE_STORAGE_BIT;
+    draw_image_usages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    VkImageCreateInfo rimg_info = vkinit::image_create_info(draw_image.format, draw_image_usages, draw_image_extent);
+
+    // Allocate draw image from GPU local memory
+    // Configure for GPU-only access and fastest memory
+    VmaAllocationCreateInfo rimg_allocinfo = {};
+    rimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    rimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    // Allocate and create the image
+    vmaCreateImage(allocator, &rimg_info, &rimg_allocinfo, &draw_image.image, &draw_image.allocation, nullptr);
+
+    // Build an image-view for the draw image to use for rendering
+    // vkguide.dev always pairs vkimages with "default" imageview
+    VkImageViewCreateInfo rview_info = vkinit::imageview_create_info(draw_image.format, draw_image.image, VK_IMAGE_ASPECT_COLOR_BIT);
+    VK_CHECK(vkCreateImageView(device, &rview_info, nullptr, &draw_image.view));
+
+    // Add to deletion functions to queue
+    main_delete_queue.push_function([=]() 
+        {
+            vkDestroyImageView(device, draw_image.view, nullptr);
+            vmaDestroyImage(allocator, draw_image.image, draw_image.allocation);
+        });
 }
 
 void phVkEngine::initCommands()
@@ -364,4 +497,103 @@ void phVkEngine::initSyncStructures()
         VK_CHECK(vkCreateSemaphore(device, &semaphore_create_info, nullptr, &frames[i].swapchain_semaphore));
         VK_CHECK(vkCreateSemaphore(device, &semaphore_create_info, nullptr, &frames[i].render_semaphore));
     }
+}
+
+void phVkEngine::initDescriptors()
+{
+    // Descriptor pool: 10 sets with 1 image each
+    std::vector<DescriptorAllocator::PoolSizeRatio> sizes = 
+        { { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 } };
+    global_descriptor_allocator.init_pool(device, 10, sizes);
+
+    // Descriptor set layout - compute draw image
+    DescriptorLayoutBuilder builder;
+    builder.add_binding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+    draw_image_descriptor_layout = builder.build(device, VK_SHADER_STAGE_COMPUTE_BIT);
+
+	// Allocate descriptor set - compute draw image
+    draw_image_descriptors = global_descriptor_allocator.allocate(device, draw_image_descriptor_layout);
+
+	// Update descriptor set info - compute draw image
+    VkDescriptorImageInfo imgInfo{};
+    imgInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imgInfo.imageView = draw_image.view;
+
+    VkWriteDescriptorSet drawImageWrite = {};
+    drawImageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    drawImageWrite.pNext = nullptr;
+    drawImageWrite.dstBinding = 0;
+    drawImageWrite.dstSet = draw_image_descriptors;
+    drawImageWrite.descriptorCount = 1;
+    drawImageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    drawImageWrite.pImageInfo = &imgInfo;
+
+    vkUpdateDescriptorSets(device, 1, &drawImageWrite, 0, nullptr);
+
+    // Add delete functions to queue for descriptor allocator and layout
+    main_delete_queue.push_function([&]() 
+        {
+            global_descriptor_allocator.destroy_pool(device);
+            vkDestroyDescriptorSetLayout(device, draw_image_descriptor_layout, nullptr);
+        });
+}
+
+void phVkEngine::initPipelines()
+{
+	initBackgroundPipelines();
+}
+
+void phVkEngine::initBackgroundPipelines()
+{
+	// Skipping push-constants and other special configurations - not needed for background
+
+    // *** Pipeline Layout ***
+    VkPipelineLayoutCreateInfo compute_layout{};
+    compute_layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    compute_layout.pNext = nullptr;
+    compute_layout.pSetLayouts = &draw_image_descriptor_layout;
+    compute_layout.setLayoutCount = 1;
+
+    VK_CHECK(vkCreatePipelineLayout(device, &compute_layout, nullptr, &gradient_pipeline_layout));
+
+
+    // *** Pipeline Module ***
+    // Load shader code
+    VkShaderModule compute_draw_shader;
+    // TODO: abstract file paths (though this one is likely temporary anyway?)
+    if (!vkutil::load_shader_module("../../../../shaders/gradient.comp.spv", device, &compute_draw_shader))
+    {
+        fmt::print("Error when building the compute shader \n");
+    }
+
+    // Configure
+    VkPipelineShaderStageCreateInfo stage_info{};
+    stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stage_info.pNext = nullptr;
+    stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    stage_info.module = compute_draw_shader;
+    stage_info.pName = "main";  // Shader entry function name
+
+
+    // *** Pipeline Creation ***
+    VkComputePipelineCreateInfo compute_pipeline_create_info{};
+    compute_pipeline_create_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    compute_pipeline_create_info.pNext = nullptr;
+    compute_pipeline_create_info.layout = gradient_pipeline_layout;
+    compute_pipeline_create_info.stage = stage_info;
+
+    VK_CHECK(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &compute_pipeline_create_info, nullptr, &gradient_pipeline));
+
+
+    // *** Cleanup ***
+    // No longer need the module once the pipeline is created
+    vkDestroyShaderModule(device, compute_draw_shader, nullptr);
+
+	// Add delete functions to queue for pipeline and layout
+    main_delete_queue.push_function([&]() 
+        {
+            vkDestroyPipelineLayout(device, gradient_pipeline_layout, nullptr);
+            vkDestroyPipeline(device, gradient_pipeline, nullptr);
+        });
+
 }

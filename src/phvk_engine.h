@@ -1,14 +1,47 @@
 // Copyright (c) 2025, Cory Douthat
+// Based on vkguide.net - see LICENSE.txt
 //
-// Acid Game Engine - Vulkan
+// Acid Graphics Engine - Vulkan (Ver 1.3-1.4)
 // Engine class
 
 #pragma once
 
 #include "phvk_types.h"
 
+#include <vector>
+
+#include <vk_mem_alloc.h>
+
+#include <deque>
+#include <functional>
+
+#include "phvk_descriptors.h"
+
 // Number of buffering frames
 constexpr unsigned int FRAME_OVERLAP = 2;
+
+// Queue for deleting objects in FIFO order
+struct DeleteQueue
+{
+	std::deque<std::function<void()>> fifo;
+
+	void push_function(std::function<void()>&& function) 
+	{
+		fifo.push_back(function);
+	}
+
+	void flush() 
+	{
+		// Reverse iterate the deletion queue to execute all the functions
+		for (auto it = fifo.rbegin(); it != fifo.rend(); it++) 
+		{
+			(*it)(); // Call function
+		}
+
+		fifo.clear();
+	}
+};
+
 
 //	Frame data for queue
 struct FrameData 
@@ -18,6 +51,8 @@ struct FrameData
 
 	VkCommandPool command_pool;
 	VkCommandBuffer main_command_buffer;
+
+	DeleteQueue delete_queue;
 };
 
 
@@ -48,23 +83,37 @@ public:
 	std::vector<VkImageView> swapchain_image_views;	// Image view handles
 	VkExtent2D swapchain_extent;			// Swapchain extent
 
+	// Vulkan image resources for drawing
+	AllocatedImage draw_image;
+	VkExtent2D draw_extent;
+
 	// Queue / frame objects
 	FrameData frames[FRAME_OVERLAP];	// Use get_current_frame() to access
 	VkQueue graphics_queue;				// Graphics queue handle
 	uint32_t graphics_queue_family;		// Graphics queue family
 
+	// Descriptor sets
+	DescriptorAllocator global_descriptor_allocator;
+	VkDescriptorSet draw_image_descriptors;
+	VkDescriptorSetLayout draw_image_descriptor_layout;
 
+	// Pipelines
+	VkPipeline gradient_pipeline;
+	VkPipelineLayout gradient_pipeline_layout;
+
+	// Deletion Queue
+	DeleteQueue main_delete_queue;		// Queue for deleting objects
+
+	// Vulkan Memory Allocator (VMA)
+	VmaAllocator allocator;
 
 	// *** Get Functions ***
 
 	FrameData& getCurrentFrame() { return frames[frame_number % FRAME_OVERLAP]; };
-
+	static phVkEngine& getLoadedEngine();	// Singleton implementation
 
 
 	// *** Engine Functions ***
-
-	// Gets the loaded engine instance
-	static phVkEngine& getLoadedEngine();
 
 	// Initializes engine
 	void init();
@@ -74,6 +123,7 @@ public:
 
 	// Draw loop
 	void draw();
+	void drawBackground(VkCommandBuffer cmd);
 
 	// Execute main loop (including draw)
 	void run();
@@ -90,5 +140,8 @@ private:
 	void initSwapchain();
 	void initCommands();
 	void initSyncStructures();
+	void initDescriptors();
+	void initPipelines();
+	void initBackgroundPipelines();
 
 };

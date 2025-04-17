@@ -1,10 +1,8 @@
-﻿
-// Written by : Patrick Marsceill (vkguide.dev)
+﻿// Written by : Patrick Marsceill (vkguide.dev)
 // Used with permission - see LICENSE.txt
-
-// vulkan_guide.h : Include file for standard system include files,
-// or project specific include files.
-
+//
+// Acid Graphics Engine - Vulkan (Ver 1.3-1.4)
+// Initializers boilerplate (vkinit)
 
 #include <phvk_initializers.h>
 

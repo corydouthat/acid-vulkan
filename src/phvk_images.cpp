@@ -1,5 +1,8 @@
 // Written by : Patrick Marsceill (vkguide.dev)
 // Used with permission - see LICENSE.txt
+//
+// Acid Graphics Engine - Vulkan (Ver 1.3-1.4)
+// Images boilerplate 
 
 #include "phvk_images.h"
 #include "phvk_initializers.h"
