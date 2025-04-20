@@ -16,15 +16,19 @@ target_link_libraries(dependencies INTERFACE fmt)
 # Add imgui
 add_library(imgui STATIC
     imgui/imgui.cpp
+    imgui/imgui_demo.cpp    #TODO: only temporary?
     imgui/imgui_draw.cpp
     imgui/imgui_tables.cpp
     imgui/imgui_widgets.cpp
+    imgui/backends/imgui_impl_sdl2.cpp
+    imgui/backends/imgui_impl_vulkan.cpp
 )
 target_include_directories(imgui PUBLIC
     imgui
-    #imgui/backends
+    imgui/backends
 )
 target_link_libraries(dependencies INTERFACE imgui)
+target_link_libraries(imgui PUBLIC Vulkan::Vulkan SDL2::SDL2)
 
 # Add libraries
 add_subdirectory(libraries libraries)
@@ -44,8 +48,12 @@ add_subdirectory(vk-bootstrap vk-bootstrap)
 target_link_libraries(dependencies INTERFACE vk-bootstrap)
 
 # Add volk
-add_subdirectory(volk volk)
-target_link_libraries(dependencies INTERFACE volk)
+# Note: volk causes issues with imgui when calling vkCreateSampler
+# there is supposed to be a compile flag for imgui (IMGUI_IMPL_VULKAN_USE_VOLK),
+# but I couldn't get it to work and vkguide.dev chapter 2 doesn't require volk yet 
+# so I gave up until it is required.
+#add_subdirectory(volk volk)
+#target_link_libraries(dependencies INTERFACE volk)
 
 # Add VulkanMemoryAllocator (VMA)
 add_subdirectory(VulkanMemoryAllocator VulkanMemoryAllocator)

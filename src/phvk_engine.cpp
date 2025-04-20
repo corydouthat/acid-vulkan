@@ -19,8 +19,8 @@
 #include <fstream>
 
 #include "imgui.h"
-//#include "imgui_impl_sdl2.h"
-//#include "imgui_impl_vulkan.h"
+#include "imgui_impl_sdl2.h"
+#include "imgui_impl_vulkan.h"
 
 #define VMA_IMPLEMENTATION  // Must include in exactly ONE cpp file
 #include "vk_mem_alloc.h"   // May be included elsewhere w/o VMA_IMPLEMENTATION
@@ -70,6 +70,7 @@ void phVkEngine::init()
     initSyncStructures();
     initDescriptors();
 	initPipelines();
+    initImgui();
 
     is_initialized = true;
 }
@@ -127,13 +128,14 @@ void phVkEngine::draw()
     // Delete objects from the last frame
     getCurrentFrame().delete_queue.flush();
 
-    // Reset render fence
-    VK_CHECK(vkResetFences(device, 1, &getCurrentFrame().render_fence));
-
     // Request an image from the swapchain (timeout 1s)
     uint32_t swapchain_img_index;
+
     VK_CHECK(vkAcquireNextImageKHR(device, swapchain, 1000000000, 
         getCurrentFrame().swapchain_semaphore, nullptr, &swapchain_img_index));
+
+    // Reset render fence
+    VK_CHECK(vkResetFences(device, 1, &getCurrentFrame().render_fence));
 
     // Command buffer
     VkCommandBuffer cmd = getCurrentFrame().main_command_buffer;
@@ -173,9 +175,16 @@ void phVkEngine::draw()
     vkutil::copy_image_to_image(cmd, draw_image.image, 
         swapchain_images[swapchain_img_index], draw_extent, swapchain_extent);
 
+    // Imgui: change swapchain image layout to "Attachment Optimal" for imgui drawing
+    vkutil::transition_image(cmd, swapchain_images[swapchain_img_index], 
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    // Imgui: draw into the swapchain image
+    drawImgui(cmd, swapchain_image_views[swapchain_img_index]);
+
     // Change the swapchain image layout to presentable mode
     vkutil::transition_image(cmd, swapchain_images[swapchain_img_index], 
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     // End command buffer recording
     VK_CHECK(vkEndCommandBuffer(cmd));
@@ -240,6 +249,52 @@ void phVkEngine::drawBackground(VkCommandBuffer cmd)
     vkCmdDispatch(cmd, std::ceil(draw_extent.width / 16.0), std::ceil(draw_extent.height / 16.0), 1);
 }
 
+void phVkEngine::drawImgui(VkCommandBuffer cmd, VkImageView target_image_view)
+{
+    VkRenderingAttachmentInfo color_attachment = vkinit::attachment_info(target_image_view, nullptr, 
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkRenderingInfo render_info = vkinit::rendering_info(swapchain_extent, &color_attachment, nullptr);
+
+    vkCmdBeginRendering(cmd, &render_info);
+
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+
+    vkCmdEndRendering(cmd);
+}
+
+void phVkEngine::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function)
+{
+    // Similar to executing commands on the GPU --
+    // the main difference is submit is not synchronized with the swapchain
+    // TODO: optimization - use use separate queue instead of graphics queue
+
+    // Reset the fence and command buffer
+    VK_CHECK(vkResetFences(device, 1, &imm_fence));
+    VK_CHECK(vkResetCommandBuffer(imm_command_buffer, 0));
+
+    VkCommandBuffer cmd = imm_command_buffer;
+
+    VkCommandBufferBeginInfo cmd_begin_info =
+        vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+    VK_CHECK(vkBeginCommandBuffer(cmd, &cmd_begin_info));
+
+    function(cmd);
+
+    VK_CHECK(vkEndCommandBuffer(cmd));
+
+    VkCommandBufferSubmitInfo cmd_info = vkinit::command_buffer_submit_info(cmd);
+    VkSubmitInfo2 submit = vkinit::submit_info(&cmd_info, nullptr, nullptr);
+
+    // Submit command buffer to the queue and execute it
+    VK_CHECK(vkQueueSubmit2(graphics_queue, 1, &submit, imm_fence));
+
+    // Wait for immediate command fence
+    VK_CHECK(vkWaitForFences(device, 1, &imm_fence, true, 9999999999));
+
+    // Now the engine will go back to waiting on render_fence
+}
+
 void phVkEngine::run()
 {
     SDL_Event sdl_event;
@@ -249,21 +304,27 @@ void phVkEngine::run()
     while (!sdl_quit) {
 
         // Handle queued events
-        while (SDL_PollEvent(&sdl_event) != 0) {
-            
+        while (SDL_PollEvent(&sdl_event) != 0) 
+        {
 			// Close the window on user close action (Alt+F4, X button, etc.)
             if (sdl_event.type == SDL_QUIT)
                 sdl_quit = true;
 
             // Handle minimize and restore events
-            if (sdl_event.type == SDL_WINDOWEVENT) {
-                if (sdl_event.window.event == SDL_WINDOWEVENT_MINIMIZED) {
+            if (sdl_event.type == SDL_WINDOWEVENT) 
+            {
+                if (sdl_event.window.event == SDL_WINDOWEVENT_MINIMIZED) 
+                {
                     stop_rendering = true;
                 }
-                if (sdl_event.window.event == SDL_WINDOWEVENT_RESTORED) {
+                if (sdl_event.window.event == SDL_WINDOWEVENT_RESTORED) 
+                {
                     stop_rendering = false;
                 }
             }
+
+            // Send SDL event to imgui for handling
+            ImGui_ImplSDL2_ProcessEvent(&sdl_event);
         }
 
         // Do not draw if minimized
@@ -273,6 +334,17 @@ void phVkEngine::run()
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }
+
+        // Imgui new frame
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplSDL2_NewFrame();
+        ImGui::NewFrame();
+
+        // Imgui demo (TODO: temporary?)
+        ImGui::ShowDemoWindow();
+
+        // Calculate internal draw structures for imgui (does not draw to a Vulkan image)
+        ImGui::Render();
 
         draw();
     }
@@ -452,7 +524,9 @@ void phVkEngine::initSwapchain()
 
 void phVkEngine::initCommands()
 {
-	// The tutorial recommends simplifying this code bu using vkinit functions
+	// *** Command Pool ***
+        
+    // The tutorial recommends simplifying this code bu using vkinit functions
     // See: https://vkguide.dev/docs/new_chapter_1/vulkan_commands_code/
     // However, I have opted to leave things more transparent for now
 
@@ -478,6 +552,23 @@ void phVkEngine::initCommands()
 
         VK_CHECK(vkAllocateCommandBuffers(device, &cmd_alloc_info, &frames[i].main_command_buffer));
     }
+
+
+
+    // *** Immediate Commands ***
+
+    VK_CHECK(vkCreateCommandPool(device, &command_pool_info, nullptr, &imm_command_pool));
+
+    // Allocate the command buffer for immediate submits
+    VkCommandBufferAllocateInfo cmd_alloc_info = 
+        vkinit::command_buffer_allocate_info(imm_command_pool, 1);
+
+    VK_CHECK(vkAllocateCommandBuffers(device, &cmd_alloc_info, &imm_command_buffer));
+
+    main_delete_queue.push_function([=]() 
+        {
+            vkDestroyCommandPool(device, imm_command_pool, nullptr);
+        });
 }
 
 void phVkEngine::initSyncStructures()
@@ -497,6 +588,11 @@ void phVkEngine::initSyncStructures()
         VK_CHECK(vkCreateSemaphore(device, &semaphore_create_info, nullptr, &frames[i].swapchain_semaphore));
         VK_CHECK(vkCreateSemaphore(device, &semaphore_create_info, nullptr, &frames[i].render_semaphore));
     }
+
+    // Immediate commands fence
+    VK_CHECK(vkCreateFence(device, &fence_create_info, nullptr, &imm_fence));
+
+    main_delete_queue.push_function([=]() { vkDestroyFence(device, imm_fence, nullptr); });
 }
 
 void phVkEngine::initDescriptors()
@@ -596,4 +692,76 @@ void phVkEngine::initBackgroundPipelines()
             vkDestroyPipeline(device, gradient_pipeline, nullptr);
         });
 
+}
+
+void phVkEngine::initImgui()
+{
+    // *** Create Descriptor Pool ***
+ 
+    // Greatly oversized - copied from imgui demo
+    // TODO: Optimization - size down?
+    VkDescriptorPoolSize pool_sizes[] = { { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+        { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+        { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 } };
+
+    VkDescriptorPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    pool_info.maxSets = 1000;
+    pool_info.poolSizeCount = (uint32_t)std::size(pool_sizes);
+    pool_info.pPoolSizes = pool_sizes;
+
+    VkDescriptorPool imgui_pool;
+    VK_CHECK(vkCreateDescriptorPool(device, &pool_info, nullptr, &imgui_pool));
+
+
+
+    // *** Initialize Imgui Library ***
+
+    // Initialize the core structures of imgui
+    ImGui::CreateContext();
+
+    // Initialize imgui for SDL2
+    ImGui_ImplSDL2_InitForVulkan(window);
+
+    // Initialize imgui for Vulkan
+    ImGui_ImplVulkan_InitInfo init_info = {};
+    init_info.Instance = instance;
+    init_info.PhysicalDevice = physical_device;
+    init_info.Device = device;
+    init_info.Queue = graphics_queue;
+    init_info.DescriptorPool = imgui_pool;
+    init_info.MinImageCount = 3;
+    init_info.ImageCount = 3;
+    init_info.UseDynamicRendering = true;
+
+    // Dynamic rendering parameters for imgui
+    init_info.PipelineRenderingCreateInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
+    init_info.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
+    init_info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &swapchain_img_format;
+
+    init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+    ImGui_ImplVulkan_Init(&init_info);
+
+    ImGui_ImplVulkan_CreateFontsTexture();
+
+
+
+    // *** Deletion Queue ***
+
+	// Add destroy functions to the deletion queue
+    main_delete_queue.push_function([=]() 
+        {
+            ImGui_ImplVulkan_Shutdown();
+            vkDestroyDescriptorPool(device, imgui_pool, nullptr);
+        });
 }

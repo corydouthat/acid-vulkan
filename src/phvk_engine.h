@@ -101,8 +101,13 @@ public:
 	VkPipeline gradient_pipeline;
 	VkPipelineLayout gradient_pipeline_layout;
 
+	// Immediate-submit structures
+	VkFence imm_fence;
+	VkCommandBuffer imm_command_buffer;
+	VkCommandPool imm_command_pool;
+
 	// Deletion Queue
-	DeleteQueue main_delete_queue;		// Queue for deleting objects
+	DeleteQueue main_delete_queue;
 
 	// Vulkan Memory Allocator (VMA)
 	VmaAllocator allocator;
@@ -124,6 +129,10 @@ public:
 	// Draw loop
 	void draw();
 	void drawBackground(VkCommandBuffer cmd);
+	void drawImgui(VkCommandBuffer cmd, VkImageView target_image_view);
+
+	// Immediate submit
+	void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
 
 	// Execute main loop (including draw)
 	void run();
@@ -143,5 +152,5 @@ private:
 	void initDescriptors();
 	void initPipelines();
 	void initBackgroundPipelines();
-
+	void initImgui();
 };
