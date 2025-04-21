@@ -55,6 +55,24 @@ struct FrameData
 	DeleteQueue delete_queue;
 };
 
+struct ComputePushConstants 
+{
+	Vec4f data1;
+	Vec4f data2;
+	Vec4f data3;
+	Vec4f data4;
+};
+
+struct ComputeEffect 
+{
+	const char* name;
+
+	VkPipeline pipeline;
+	VkPipelineLayout layout;
+
+	ComputePushConstants data;
+};
+
 
 class phVkEngine {
 public:
@@ -68,6 +86,10 @@ public:
 	VkExtent2D window_extent { 1700 , 900 };
 
 	struct SDL_Window* window { nullptr };
+
+	// Background effects objects
+	std::vector<ComputeEffect> background_effects;
+	int current_background_effect{ 0 };
 
 	// Instance objects
 	VkInstance instance;				// Vulkan library handle
@@ -151,6 +173,5 @@ private:
 	void initSyncStructures();
 	void initDescriptors();
 	void initPipelines();
-	void initBackgroundPipelines();
 	void initImgui();
 };

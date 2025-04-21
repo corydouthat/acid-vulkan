@@ -227,25 +227,18 @@ void phVkEngine::draw()
 
 void phVkEngine::drawBackground(VkCommandBuffer cmd)
 {
-    // Flash screen over a 120 frame period
-    VkClearColorValue clear_color_value;
-    float flash = std::abs(std::sin(frame_number / 120.f));
-    clear_color_value = { { 0.0f, 0.0f, flash, 1.0f } };
+    // Background effect for tutorial
+    ComputeEffect& effect = background_effects[current_background_effect];
 
-    // Configure image range object
-    VkImageSubresourceRange clear_range = vkinit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
+    // Bind the gradient drawing compute pipeline
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
 
-
-    // *** Gradient Comput Shader ***
-    
-    // Bind compute pipeline - gradient shader
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, gradient_pipeline);
-
-    // Bind descriptor set containing the compute draw image
+    // bind the descriptor set containing the draw image for the compute pipeline
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, gradient_pipeline_layout, 0, 1, &draw_image_descriptors, 0, nullptr);
 
-    // Dispatch compute pipeline
-    // Using a 16x16 workgroup size so we need to divide by it
+    vkCmdPushConstants(cmd, gradient_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &effect.data);
+
+    // Execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
     vkCmdDispatch(cmd, std::ceil(draw_extent.width / 16.0), std::ceil(draw_extent.height / 16.0), 1);
 }
 
@@ -340,8 +333,22 @@ void phVkEngine::run()
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
-        // Imgui demo (TODO: temporary?)
-        ImGui::ShowDemoWindow();
+        // Imgui window for controlling background
+        if (ImGui::Begin("background")) 
+        {
+            ComputeEffect& selected = background_effects[current_background_effect];
+
+            ImGui::Text("Selected effect: ", selected.name);
+
+            ImGui::SliderInt("Effect Index", &current_background_effect, 0, background_effects.size() - 1);
+
+            ImGui::InputFloat4("data1", (float*)&selected.data.data1);
+            ImGui::InputFloat4("data2", (float*)&selected.data.data2);
+            ImGui::InputFloat4("data3", (float*)&selected.data.data3);
+            ImGui::InputFloat4("data4", (float*)&selected.data.data4);
+
+            ImGui::End();
+        }
 
         // Calculate internal draw structures for imgui (does not draw to a Vulkan image)
         ImGui::Render();
@@ -636,39 +643,53 @@ void phVkEngine::initDescriptors()
 
 void phVkEngine::initPipelines()
 {
-	initBackgroundPipelines();
-}
-
-void phVkEngine::initBackgroundPipelines()
-{
-	// Skipping push-constants and other special configurations - not needed for background
-
     // *** Pipeline Layout ***
+
     VkPipelineLayoutCreateInfo compute_layout{};
     compute_layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     compute_layout.pNext = nullptr;
     compute_layout.pSetLayouts = &draw_image_descriptor_layout;
     compute_layout.setLayoutCount = 1;
 
+    // Add push constants
+    VkPushConstantRange push_constant{};
+    push_constant.offset = 0;
+    push_constant.size = sizeof(ComputePushConstants);
+    push_constant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    compute_layout.pPushConstantRanges = &push_constant;
+    compute_layout.pushConstantRangeCount = 1;
+
     VK_CHECK(vkCreatePipelineLayout(device, &compute_layout, nullptr, &gradient_pipeline_layout));
 
 
+
+
     // *** Pipeline Module ***
+    
     // Load shader code
-    VkShaderModule compute_draw_shader;
+    VkShaderModule gradient_shader;
     // TODO: abstract file paths (though this one is likely temporary anyway?)
-    if (!vkutil::load_shader_module("../../../../shaders/gradient.comp.spv", device, &compute_draw_shader))
+    if (!vkutil::load_shader_module("../../../../shaders/gradient_color.comp.spv", device, &gradient_shader))
     {
-        fmt::print("Error when building the compute shader \n");
+        fmt::print("Error when building the gradient shader \n");
     }
 
-    // Configure
+    // Load shader code
+    VkShaderModule sky_shader;
+    // TODO: abstract file paths (though this one is likely temporary anyway?)
+    if (!vkutil::load_shader_module("../../../../shaders/sky.comp.spv", device, &sky_shader))
+    {
+        fmt::print("Error when building the sky shader \n");
+    }
+
+    // Configure gradient
     VkPipelineShaderStageCreateInfo stage_info{};
     stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stage_info.pNext = nullptr;
     stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    stage_info.module = compute_draw_shader;
+    stage_info.module = gradient_shader;
     stage_info.pName = "main";  // Shader entry function name
+
 
 
     // *** Pipeline Creation ***
@@ -678,20 +699,47 @@ void phVkEngine::initBackgroundPipelines()
     compute_pipeline_create_info.layout = gradient_pipeline_layout;
     compute_pipeline_create_info.stage = stage_info;
 
-    VK_CHECK(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &compute_pipeline_create_info, nullptr, &gradient_pipeline));
+    ComputeEffect gradient;
+    gradient.layout = gradient_pipeline_layout;
+    gradient.name = "gradient";
+    gradient.data = {};
+
+    // Default colors
+    gradient.data.data1 = Vec4f(1, 0, 0, 1);
+    gradient.data.data2 = Vec4f(0, 0, 1, 1);
+
+    VK_CHECK(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &compute_pipeline_create_info, nullptr, &gradient.pipeline));
+
+    // Change the shader module only to create the sky shader
+    compute_pipeline_create_info.stage.module = sky_shader;
+
+    ComputeEffect sky;
+    sky.layout = gradient_pipeline_layout;
+    sky.name = "sky";
+    sky.data = {};
+    // Default sky parameters
+    sky.data.data1 = Vec4f(0.1, 0.2, 0.4, 0.97);
+
+    VK_CHECK(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &compute_pipeline_create_info, nullptr, &sky.pipeline));
+
+    // Add the two background effects into the array
+    background_effects.push_back(gradient);
+    background_effects.push_back(sky);
+
 
 
     // *** Cleanup ***
     // No longer need the module once the pipeline is created
-    vkDestroyShaderModule(device, compute_draw_shader, nullptr);
+    vkDestroyShaderModule(device, gradient_shader, nullptr);
+    vkDestroyShaderModule(device, sky_shader, nullptr);
 
-	// Add delete functions to queue for pipeline and layout
-    main_delete_queue.push_function([&]() 
+    // Add delete functions to queue for pipeline and layout
+    main_delete_queue.push_function([&]()
         {
             vkDestroyPipelineLayout(device, gradient_pipeline_layout, nullptr);
-            vkDestroyPipeline(device, gradient_pipeline, nullptr);
+            vkDestroyPipeline(device, sky.pipeline, nullptr);
+            vkDestroyPipeline(device, gradient.pipeline, nullptr);
         });
-
 }
 
 void phVkEngine::initImgui()
