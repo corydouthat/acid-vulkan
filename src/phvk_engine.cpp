@@ -165,9 +165,15 @@ void phVkEngine::draw()
     // Render the draw image
     drawBackground(cmd);
 
+    // Optimize layout for geometry rendering
+    vkutil::transition_image(cmd, draw_image.image, 
+        VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    drawGeometry(cmd);
+
 	// Transition draw and swapchain image into their respective transfer layouts
     vkutil::transition_image(cmd, draw_image.image, 
-        VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     vkutil::transition_image(cmd, swapchain_images[swapchain_img_index], 
         VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
@@ -240,6 +246,44 @@ void phVkEngine::drawBackground(VkCommandBuffer cmd)
 
     // Execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
     vkCmdDispatch(cmd, std::ceil(draw_extent.width / 16.0), std::ceil(draw_extent.height / 16.0), 1);
+}
+
+void phVkEngine::drawGeometry(VkCommandBuffer cmd)
+{
+    // Attach draw image
+    VkRenderingAttachmentInfo color_attachment = vkinit::attachment_info(draw_image.view, 
+        nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    VkRenderingInfo render_info = vkinit::rendering_info(draw_extent, &color_attachment, nullptr);
+
+    // Begin render pass
+    vkCmdBeginRendering(cmd, &render_info);
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, triangle_pipeline);
+
+    // Set dynamic viewport and scissor
+    VkViewport viewport = {};
+    viewport.x = 0;
+    viewport.y = 0;
+    viewport.width = draw_extent.width;
+    viewport.height = draw_extent.height;
+    viewport.minDepth = 0.f;
+    viewport.maxDepth = 1.f;
+
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor = {};
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent.width = draw_extent.width;
+    scissor.extent.height = draw_extent.height;
+
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+    // Launch a draw command to draw 3 vertices
+    vkCmdDraw(cmd, 3, 1, 0, 0);
+
+    vkCmdEndRendering(cmd);
 }
 
 void phVkEngine::drawImgui(VkCommandBuffer cmd, VkImageView target_image_view)
@@ -740,6 +784,75 @@ void phVkEngine::initPipelines()
             vkDestroyPipeline(device, sky.pipeline, nullptr);
             vkDestroyPipeline(device, gradient.pipeline, nullptr);
         });
+
+
+
+	initTrianglePipeline();
+}
+
+void phVkEngine::initTrianglePipeline()
+{
+    VkShaderModule triangle_frag_shader;
+    if (!vkutil::load_shader_module("../../../../shaders/colored_triangle.frag.spv", device, &triangle_frag_shader)) 
+    {
+        fmt::print("Error when building the triangle fragment shader module\n");
+    }
+    else 
+    {
+        fmt::print("Triangle fragment shader succesfully loaded\n");
+    }
+
+    VkShaderModule triangle_vertex_shader;
+    if (!vkutil::load_shader_module("../../../../shaders/colored_triangle.vert.spv", device, &triangle_vertex_shader)) 
+    {
+        fmt::print("Error when building the triangle vertex shader module\n");
+    }
+    else 
+    {
+        fmt::print("Triangle vertex shader succesfully loaded\n");
+    }
+
+    // Build the pipeline layout that controls the inputs/outputs of the shader
+    // We are not using descriptor sets or other systems yet, so no need to use anything other than empty default
+    VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
+    VK_CHECK(vkCreatePipelineLayout(device, &pipeline_layout_info, nullptr, &triangle_pipeline_layout));
+
+    PipelineBuilder pipeline_builder;
+
+    //use the triangle layout we created
+    pipeline_builder.pipeline_layout = triangle_pipeline_layout;
+    //connecting the vertex and pixel shaders to the pipeline
+    pipeline_builder.setShaders(triangle_vertex_shader, triangle_frag_shader);
+    //it will draw triangles
+    pipeline_builder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    //filled triangles
+    pipeline_builder.setPolygonMode(VK_POLYGON_MODE_FILL);
+    //no backface culling
+    pipeline_builder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    //no multisampling
+    pipeline_builder.setMultiSamplingNone();
+    //no blending
+    pipeline_builder.disableBlending();
+    //no depth testing
+    pipeline_builder.disableDepthtest();
+
+    //connect the image format we will draw into, from draw image
+    pipeline_builder.setColorAttachmentFormat(draw_image.format);
+    pipeline_builder.setDepthFormat(VK_FORMAT_UNDEFINED);
+
+    //finally build the pipeline
+    triangle_pipeline = pipeline_builder.buildPipeline(device);
+
+    //clean structures
+    vkDestroyShaderModule(device, triangle_frag_shader, nullptr);
+    vkDestroyShaderModule(device, triangle_vertex_shader, nullptr);
+
+    main_delete_queue.push_function([&]() 
+        {
+            vkDestroyPipelineLayout(device, triangle_pipeline_layout, nullptr);
+            vkDestroyPipeline(device, triangle_pipeline, nullptr);
+        });
+
 }
 
 void phVkEngine::initImgui()
