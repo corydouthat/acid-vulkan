@@ -25,7 +25,7 @@ struct DeleteQueue
 {
 	std::deque<std::function<void()>> fifo;
 
-	void push_function(std::function<void()>&& function) 
+	void pushFunction(std::function<void()>&& function) 
 	{
 		fifo.push_back(function);
 	}
@@ -114,6 +114,11 @@ public:
 	VkQueue graphics_queue;				// Graphics queue handle
 	uint32_t graphics_queue_family;		// Graphics queue family
 
+	// Immediate-submit structures
+	VkFence imm_fence;
+	VkCommandBuffer imm_command_buffer;
+	VkCommandPool imm_command_pool;
+
 	// Descriptor sets
 	DescriptorAllocator global_descriptor_allocator;
 	VkDescriptorSet draw_image_descriptors;
@@ -124,17 +129,19 @@ public:
 	VkPipelineLayout gradient_pipeline_layout;
 	VkPipeline triangle_pipeline;
 	VkPipelineLayout triangle_pipeline_layout;
+	VkPipeline mesh_pipeline;
+	VkPipelineLayout mesh_pipeline_layout;
 
-	// Immediate-submit structures
-	VkFence imm_fence;
-	VkCommandBuffer imm_command_buffer;
-	VkCommandPool imm_command_pool;
+	// Mesh data
+	GPUMeshBuffers rectangle;
+
+	// Vulkan Memory Allocator (VMA)
+	VmaAllocator allocator;
 
 	// Deletion Queue
 	DeleteQueue main_delete_queue;
 
-	// Vulkan Memory Allocator (VMA)
-	VmaAllocator allocator;
+
 
 	// *** Get Functions ***
 
@@ -146,6 +153,9 @@ public:
 
 	// Initializes engine
 	void init();
+
+	// Execute main loop (including draw)
+	void run();
 
 	// Shut down and cleanup
 	void cleanup();
@@ -159,8 +169,14 @@ public:
 	// Immediate submit
 	void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
 
-	// Execute main loop (including draw)
-	void run();
+	// Upload a mesh to the GPU
+	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
+
+	// Create buffer
+	AllocatedBuffer createBuffer(size_t alloc_size, VkBufferUsageFlags usage, VmaMemoryUsage memory_usage);
+
+	// Destroy buffer
+	void destroyBuffer(const AllocatedBuffer& buffer);
 
 private:
 
@@ -176,6 +192,9 @@ private:
 	void initSyncStructures();
 	void initDescriptors();
 	void initPipelines();
+	void initBackgroundPipelines();
 	void initTrianglePipeline();
+	void initMeshPipeline();
 	void initImgui();
+	void initDefaultData();
 };

@@ -71,8 +71,78 @@ void phVkEngine::init()
     initDescriptors();
 	initPipelines();
     initImgui();
+    initDefaultData();
 
     is_initialized = true;
+}
+
+void phVkEngine::run()
+{
+    SDL_Event sdl_event;
+    bool sdl_quit = false;
+
+    // main loop
+    while (!sdl_quit) {
+
+        // Handle queued events
+        while (SDL_PollEvent(&sdl_event) != 0)
+        {
+            // Close the window on user close action (Alt+F4, X button, etc.)
+            if (sdl_event.type == SDL_QUIT)
+                sdl_quit = true;
+
+            // Handle minimize and restore events
+            if (sdl_event.type == SDL_WINDOWEVENT)
+            {
+                if (sdl_event.window.event == SDL_WINDOWEVENT_MINIMIZED)
+                {
+                    stop_rendering = true;
+                }
+                if (sdl_event.window.event == SDL_WINDOWEVENT_RESTORED)
+                {
+                    stop_rendering = false;
+                }
+            }
+
+            // Send SDL event to imgui for handling
+            ImGui_ImplSDL2_ProcessEvent(&sdl_event);
+        }
+
+        // Do not draw if minimized
+        if (stop_rendering)
+        {
+            // Sleep thread
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
+
+        // Imgui new frame
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplSDL2_NewFrame();
+        ImGui::NewFrame();
+
+        // Imgui window for controlling background
+        if (ImGui::Begin("background"))
+        {
+            ComputeEffect& selected = background_effects[current_background_effect];
+
+            ImGui::Text("Selected effect: ", selected.name);
+
+            ImGui::SliderInt("Effect Index", &current_background_effect, 0, background_effects.size() - 1);
+
+            ImGui::InputFloat4("data1", (float*)&selected.data.data1);
+            ImGui::InputFloat4("data2", (float*)&selected.data.data2);
+            ImGui::InputFloat4("data3", (float*)&selected.data.data3);
+            ImGui::InputFloat4("data4", (float*)&selected.data.data4);
+
+            ImGui::End();
+        }
+
+        // Calculate internal draw structures for imgui (does not draw to a Vulkan image)
+        ImGui::Render();
+
+        draw();
+    }
 }
 
 void phVkEngine::cleanup()
@@ -250,6 +320,8 @@ void phVkEngine::drawBackground(VkCommandBuffer cmd)
 
 void phVkEngine::drawGeometry(VkCommandBuffer cmd)
 {
+    // *** Setup ***
+    // 
     // Attach draw image
     VkRenderingAttachmentInfo color_attachment = vkinit::attachment_info(draw_image.view, 
         nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
@@ -259,6 +331,11 @@ void phVkEngine::drawGeometry(VkCommandBuffer cmd)
     // Begin render pass
     vkCmdBeginRendering(cmd, &render_info);
 
+
+
+    // *** Draw Triangle ***
+    // TODO: tutorial was unclear - is this part used for the mesh now?
+    //
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, triangle_pipeline);
 
     // Set dynamic viewport and scissor
@@ -280,8 +357,27 @@ void phVkEngine::drawGeometry(VkCommandBuffer cmd)
 
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
+    // TODO: tutorial error - drawing the triangle now and then ending rendering causes errors
     // Launch a draw command to draw 3 vertices
     vkCmdDraw(cmd, 3, 1, 0, 0);
+
+    //vkCmdEndRendering(cmd);
+
+
+
+	// *** Draw Rectangle Mesh ***
+    //
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline);
+
+    GPUDrawPushConstants push_constants;
+    push_constants.world_matrix = Mat4f();  // Identity
+    push_constants.vertex_buffer_address = rectangle.vertex_buffer_address;
+
+    vkCmdPushConstants(cmd, mesh_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, 
+        sizeof(GPUDrawPushConstants), &push_constants);
+    vkCmdBindIndexBuffer(cmd, rectangle.index_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+    vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
 
     vkCmdEndRendering(cmd);
 }
@@ -332,75 +428,101 @@ void phVkEngine::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& func
     // Now the engine will go back to waiting on render_fence
 }
 
-void phVkEngine::run()
+GPUMeshBuffers phVkEngine::uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices)
 {
-    SDL_Event sdl_event;
-    bool sdl_quit = false;
+    // Using GPU_ONLY buffers is highly recommended for mesh performance
+    // Few examples of CPU / CPU-accessible buffer might be CPU-driven particle system or dynamic effects
 
-    // main loop
-    while (!sdl_quit) {
+    // TODO: Optimization - put this in a background thread so we don't..
+    //      have to wait for the GPU commands to complete
 
-        // Handle queued events
-        while (SDL_PollEvent(&sdl_event) != 0) 
+
+    // *** Create GPU Buffers ***
+
+    const size_t vertex_buf_size = vertices.size() * sizeof(Vertex);
+    const size_t index_buf_size = indices.size() * sizeof(uint32_t);
+
+    GPUMeshBuffers new_mesh;
+
+    // Create vertex buffer
+    new_mesh.vertex_buffer = createBuffer(vertex_buf_size, 
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | // SSBO | memory copy
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+
+    // Find the adress of the vertex buffer
+    VkBufferDeviceAddressInfo device_addr_info{ 
+        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+        .buffer = new_mesh.vertex_buffer.buffer };
+    new_mesh.vertex_buffer_address = vkGetBufferDeviceAddress(device, &device_addr_info);
+
+    // Create index buffer
+    new_mesh.index_buffer = createBuffer(index_buf_size, 
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,    // Index draws | memory copy
+        VMA_MEMORY_USAGE_GPU_ONLY);
+
+
+	// *** Copy Data to GPU ***
+
+    // Set up a staging buffer
+    AllocatedBuffer staging = createBuffer(vertex_buf_size + index_buf_size, 
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+
+    void* data = staging.allocation->GetMappedData();
+
+    // Copy vertex buffer to staging
+    memcpy(data, vertices.data(), vertex_buf_size);
+    // Copy index buffer staging
+    memcpy((char*)data + vertex_buf_size, indices.data(), index_buf_size);
+
+	// Submit commands to copy from staging to GPU buffer
+    immediateSubmit([&](VkCommandBuffer cmd) 
         {
-			// Close the window on user close action (Alt+F4, X button, etc.)
-            if (sdl_event.type == SDL_QUIT)
-                sdl_quit = true;
+            VkBufferCopy vertexCopy{ 0 };
+            vertexCopy.dstOffset = 0;
+            vertexCopy.srcOffset = 0;
+            vertexCopy.size = vertex_buf_size;
 
-            // Handle minimize and restore events
-            if (sdl_event.type == SDL_WINDOWEVENT) 
-            {
-                if (sdl_event.window.event == SDL_WINDOWEVENT_MINIMIZED) 
-                {
-                    stop_rendering = true;
-                }
-                if (sdl_event.window.event == SDL_WINDOWEVENT_RESTORED) 
-                {
-                    stop_rendering = false;
-                }
-            }
+            vkCmdCopyBuffer(cmd, staging.buffer, new_mesh.vertex_buffer.buffer, 1, &vertexCopy);
 
-            // Send SDL event to imgui for handling
-            ImGui_ImplSDL2_ProcessEvent(&sdl_event);
-        }
+            VkBufferCopy indexCopy{ 0 };
+            indexCopy.dstOffset = 0;
+            indexCopy.srcOffset = vertex_buf_size;
+            indexCopy.size = index_buf_size;
 
-        // Do not draw if minimized
-        if (stop_rendering) 
-        {
-            // Sleep thread
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            continue;
-        }
+            vkCmdCopyBuffer(cmd, staging.buffer, new_mesh.index_buffer.buffer, 1, &indexCopy);
+        });
 
-        // Imgui new frame
-        ImGui_ImplVulkan_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
+	// Destroy temporary staging buffer
+    destroyBuffer(staging);
 
-        // Imgui window for controlling background
-        if (ImGui::Begin("background")) 
-        {
-            ComputeEffect& selected = background_effects[current_background_effect];
-
-            ImGui::Text("Selected effect: ", selected.name);
-
-            ImGui::SliderInt("Effect Index", &current_background_effect, 0, background_effects.size() - 1);
-
-            ImGui::InputFloat4("data1", (float*)&selected.data.data1);
-            ImGui::InputFloat4("data2", (float*)&selected.data.data2);
-            ImGui::InputFloat4("data3", (float*)&selected.data.data3);
-            ImGui::InputFloat4("data4", (float*)&selected.data.data4);
-
-            ImGui::End();
-        }
-
-        // Calculate internal draw structures for imgui (does not draw to a Vulkan image)
-        ImGui::Render();
-
-        draw();
-    }
+    return new_mesh;
 }
 
+AllocatedBuffer phVkEngine::createBuffer(size_t alloc_size, VkBufferUsageFlags usage, VmaMemoryUsage memory_usage)
+{
+    VkBufferCreateInfo buffer_info = { .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    buffer_info.pNext = nullptr;
+    buffer_info.size = alloc_size;
+
+    buffer_info.usage = usage;
+
+    VmaAllocationCreateInfo vmaallocInfo = {};
+    vmaallocInfo.usage = memory_usage;
+    vmaallocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    AllocatedBuffer new_buffer;
+
+    // Allocate the buffer
+    VK_CHECK(vmaCreateBuffer(allocator, &buffer_info, &vmaallocInfo, &new_buffer.buffer, &new_buffer.allocation,
+        &new_buffer.info));
+
+    return new_buffer;
+}
+
+void phVkEngine::destroyBuffer(const AllocatedBuffer& buffer)
+{
+    vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
+}
 
 void phVkEngine::createSwapchain(uint32_t width, uint32_t height)
 {
@@ -489,17 +611,17 @@ void phVkEngine::initVulkan()
 
     // Use vkbootstrap to create the logical Vulkan device
     vkb::DeviceBuilder device_builder{ vkb_physical_device };
-    vkb::Device vkb_device = device_builder.build().value();
+    vkb::Device vkbdevice = device_builder.build().value();
 
     // Get the VkDevice handle used in the rest of a vulkan application
-    device = vkb_device.device;
+    device = vkbdevice.device;
     physical_device = vkb_physical_device.physical_device;
 
     
     // *** Init Queue ***
     // Use vkbootstrap to get a graphics queue
-    graphics_queue = vkb_device.get_queue(vkb::QueueType::graphics).value();
-    graphics_queue_family = vkb_device.get_queue_index(vkb::QueueType::graphics).value();
+    graphics_queue = vkbdevice.get_queue(vkb::QueueType::graphics).value();
+    graphics_queue_family = vkbdevice.get_queue_index(vkb::QueueType::graphics).value();
 
 
     // *** Init Vulkan Memory Allocator (VMA) ***
@@ -511,7 +633,7 @@ void phVkEngine::initVulkan()
     vmaCreateAllocator(&allocator_info, &allocator);
 
     // Add memory allocator to delete queue
-    main_delete_queue.push_function([&]()
+    main_delete_queue.pushFunction([&]()
         {
             vmaDestroyAllocator(allocator);
         });
@@ -566,7 +688,7 @@ void phVkEngine::initSwapchain()
     VK_CHECK(vkCreateImageView(device, &rview_info, nullptr, &draw_image.view));
 
     // Add to deletion functions to queue
-    main_delete_queue.push_function([=]() 
+    main_delete_queue.pushFunction([=]() 
         {
             vkDestroyImageView(device, draw_image.view, nullptr);
             vmaDestroyImage(allocator, draw_image.image, draw_image.allocation);
@@ -616,7 +738,7 @@ void phVkEngine::initCommands()
 
     VK_CHECK(vkAllocateCommandBuffers(device, &cmd_alloc_info, &imm_command_buffer));
 
-    main_delete_queue.push_function([=]() 
+    main_delete_queue.pushFunction([=]() 
         {
             vkDestroyCommandPool(device, imm_command_pool, nullptr);
         });
@@ -643,7 +765,7 @@ void phVkEngine::initSyncStructures()
     // Immediate commands fence
     VK_CHECK(vkCreateFence(device, &fence_create_info, nullptr, &imm_fence));
 
-    main_delete_queue.push_function([=]() { vkDestroyFence(device, imm_fence, nullptr); });
+    main_delete_queue.pushFunction([=]() { vkDestroyFence(device, imm_fence, nullptr); });
 }
 
 void phVkEngine::initDescriptors()
@@ -678,7 +800,7 @@ void phVkEngine::initDescriptors()
     vkUpdateDescriptorSets(device, 1, &drawImageWrite, 0, nullptr);
 
     // Add delete functions to queue for descriptor allocator and layout
-    main_delete_queue.push_function([&]() 
+    main_delete_queue.pushFunction([&]() 
         {
             global_descriptor_allocator.destroy_pool(device);
             vkDestroyDescriptorSetLayout(device, draw_image_descriptor_layout, nullptr);
@@ -686,6 +808,16 @@ void phVkEngine::initDescriptors()
 }
 
 void phVkEngine::initPipelines()
+{
+    // Compute Pipelines
+    initBackgroundPipelines();
+
+	// Graphics Pipelines
+	initTrianglePipeline();
+	initMeshPipeline();
+}
+
+void phVkEngine::initBackgroundPipelines()
 {
     // *** Pipeline Layout ***
 
@@ -709,7 +841,7 @@ void phVkEngine::initPipelines()
 
 
     // *** Pipeline Module ***
-    
+
     // Load shader code
     VkShaderModule gradient_shader;
     // TODO: abstract file paths (though this one is likely temporary anyway?)
@@ -778,20 +910,18 @@ void phVkEngine::initPipelines()
     vkDestroyShaderModule(device, sky_shader, nullptr);
 
     // Add delete functions to queue for pipeline and layout
-    main_delete_queue.push_function([&]()
+    main_delete_queue.pushFunction([&]()
         {
             vkDestroyPipelineLayout(device, gradient_pipeline_layout, nullptr);
             vkDestroyPipeline(device, sky.pipeline, nullptr);
             vkDestroyPipeline(device, gradient.pipeline, nullptr);
         });
-
-
-
-	initTrianglePipeline();
 }
 
 void phVkEngine::initTrianglePipeline()
 {
+    // *** Pipeline Module ***
+
     VkShaderModule triangle_frag_shader;
     if (!vkutil::load_shader_module("../../../../shaders/colored_triangle.frag.spv", device, &triangle_frag_shader)) 
     {
@@ -812,11 +942,17 @@ void phVkEngine::initTrianglePipeline()
         fmt::print("Triangle vertex shader succesfully loaded\n");
     }
 
+
+
+    // *** Pipeline Layout ***
     // Build the pipeline layout that controls the inputs/outputs of the shader
     // We are not using descriptor sets or other systems yet, so no need to use anything other than empty default
     VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
     VK_CHECK(vkCreatePipelineLayout(device, &pipeline_layout_info, nullptr, &triangle_pipeline_layout));
 
+
+
+    // *** Pipeline Creation ***
     PipelineBuilder pipeline_builder;
 
     //use the triangle layout we created
@@ -843,16 +979,96 @@ void phVkEngine::initTrianglePipeline()
     //finally build the pipeline
     triangle_pipeline = pipeline_builder.buildPipeline(device);
 
+
+
+	// *** Cleanup ***
     //clean structures
     vkDestroyShaderModule(device, triangle_frag_shader, nullptr);
     vkDestroyShaderModule(device, triangle_vertex_shader, nullptr);
 
-    main_delete_queue.push_function([&]() 
+    main_delete_queue.pushFunction([&]() 
         {
             vkDestroyPipelineLayout(device, triangle_pipeline_layout, nullptr);
             vkDestroyPipeline(device, triangle_pipeline, nullptr);
         });
 
+}
+
+void phVkEngine::initMeshPipeline()
+{
+	// *** Pipeline Module ***
+    VkShaderModule triangle_frag_shader;
+    if (!vkutil::load_shader_module("../../../../shaders/colored_triangle.frag.spv", device, &triangle_frag_shader)) {
+        fmt::print("Error when building the triangle fragment shader module\n");
+    }
+    else {
+        fmt::print("Triangle fragment shader succesfully loaded\n");
+    }
+
+    VkShaderModule triangle_vertex_shader;
+    if (!vkutil::load_shader_module("../../../../shaders/colored_triangle_mesh.vert.spv", device, &triangle_vertex_shader)) {
+        fmt::print("Error when building the triangle mesh vertex shader module\n");
+    }
+    else {
+        fmt::print("Triangle mesh vertex shader succesfully loaded\n");
+    }
+
+    VkPushConstantRange buffer_range{};
+    buffer_range.offset = 0;
+    buffer_range.size = sizeof(GPUDrawPushConstants);
+    buffer_range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
+    pipeline_layout_info.pPushConstantRanges = &buffer_range;
+    pipeline_layout_info.pushConstantRangeCount = 1;
+
+
+
+	// *** Pipeline Layout ***
+    VK_CHECK(vkCreatePipelineLayout(device, &pipeline_layout_info, nullptr, &mesh_pipeline_layout));
+
+
+
+	// *** Pipeline Creation ***
+    PipelineBuilder pipelineBuilder;
+
+    // Use the triangle layout
+    pipelineBuilder.pipeline_layout = mesh_pipeline_layout;
+    // Connect the vertex and pixel shaders to the pipeline
+    pipelineBuilder.setShaders(triangle_vertex_shader, triangle_frag_shader);
+    // Topology to draw triangles
+    pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    // Filled triangles
+    pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
+    // No backface culling
+    pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    // No multisampling
+    pipelineBuilder.setMultiSamplingNone();
+    // No blending
+    pipelineBuilder.disableBlending();
+	// No depth testing
+    pipelineBuilder.disableDepthtest();
+
+    // Connect the image format we will draw into, from draw image
+    pipelineBuilder.setColorAttachmentFormat(draw_image.format);
+    pipelineBuilder.setDepthFormat(VK_FORMAT_UNDEFINED);
+
+    // Build the pipeline
+    mesh_pipeline = pipelineBuilder.buildPipeline(device);
+
+
+
+	// *** Cleanup ***
+    //clean structures
+    vkDestroyShaderModule(device, triangle_frag_shader, nullptr);
+    vkDestroyShaderModule(device, triangle_vertex_shader, nullptr);
+
+    // Add delete queue functions
+    main_delete_queue.pushFunction([&]() 
+        {
+            vkDestroyPipelineLayout(device, mesh_pipeline_layout, nullptr);
+            vkDestroyPipeline(device, mesh_pipeline, nullptr);
+        });
 }
 
 void phVkEngine::initImgui()
@@ -920,9 +1136,47 @@ void phVkEngine::initImgui()
     // *** Deletion Queue ***
 
 	// Add destroy functions to the deletion queue
-    main_delete_queue.push_function([=]() 
+    main_delete_queue.pushFunction([=]() 
         {
             ImGui_ImplVulkan_Shutdown();
             vkDestroyDescriptorPool(device, imgui_pool, nullptr);
         });
+}
+
+void phVkEngine::initDefaultData() 
+{
+
+    // *** Create Rectangle Mesh ***
+    std::array<Vertex, 4> rect_vertices;
+
+    rect_vertices[0].position = { 0.5,-0.5, 0 };
+    rect_vertices[1].position = { 0.5,0.5, 0 };
+    rect_vertices[2].position = { -0.5,-0.5, 0 };
+    rect_vertices[3].position = { -0.5,0.5, 0 };
+
+    rect_vertices[0].color = { 0,0, 0,1 };
+    rect_vertices[1].color = { 0.5,0.5,0.5 ,1 };
+    rect_vertices[2].color = { 1,0, 0,1 };
+    rect_vertices[3].color = { 0,1, 0,1 };
+
+    std::array<uint32_t, 6> rect_indices;
+
+    rect_indices[0] = 0;
+    rect_indices[1] = 1;
+    rect_indices[2] = 2;
+
+    rect_indices[3] = 2;
+    rect_indices[4] = 1;
+    rect_indices[5] = 3;
+
+    rectangle = uploadMesh(rect_indices, rect_vertices);
+
+    // *** Cleanup ***
+    // Add delete functions to queue
+    main_delete_queue.pushFunction([&]() 
+        {
+            destroyBuffer(rectangle.index_buffer);
+            destroyBuffer(rectangle.vertex_buffer);
+        });
+
 }

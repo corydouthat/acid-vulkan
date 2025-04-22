@@ -23,8 +23,7 @@
 
 #include <fmt/core.h>
 
-//#include <glm/mat4x4.hpp>
-//#include <glm/vec4.hpp>
+// TODO: make template or switch to doubles?
 #include "vec.hpp"
 #include "mat.hpp"
 
@@ -36,6 +35,40 @@ struct AllocatedImage
     VmaAllocation allocation;
     VkExtent3D extent;
     VkFormat format;
+};
+
+struct AllocatedBuffer 
+{
+    VkBuffer buffer;
+    VmaAllocation allocation;
+    VmaAllocationInfo info;
+};
+
+struct Vertex 
+{
+    // TODO: will optimize to compact data later in the vkguide.dev tutorial
+    // Interleaving uv's to better match shader alignment on GPU
+    Vec3f position;
+    float uv_x;
+    Vec3f normal;
+    float uv_y;
+    Vec4f color;
+};
+
+// Holds the resources needed for a mesh
+struct GPUMeshBuffers 
+{
+    AllocatedBuffer index_buffer;
+    AllocatedBuffer vertex_buffer;
+    VkDeviceAddress vertex_buffer_address;
+};
+
+// Push constants for our mesh object draws
+// TODO: re-name to GPUMeshPushConstants?
+struct GPUDrawPushConstants 
+{
+    Mat4f world_matrix;                     // Transform matrix
+    VkDeviceAddress vertex_buffer_address;  // Buffer address
 };
 
 
