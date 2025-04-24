@@ -50,7 +50,7 @@ void phVkEngine::init()
     SDL_Init(SDL_INIT_VIDEO);
 
     // SDL window flags
-    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN);
+    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
 
 	// Create the window
     window = SDL_CreateWindow(
@@ -113,6 +113,13 @@ void phVkEngine::run()
             continue;
         }
 
+        // Window resize check
+		if (resize_requested)
+		{
+			resizeSwapchain();
+			resize_requested = false;
+		}
+
         // Imgui new frame
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL2_NewFrame();
@@ -121,6 +128,8 @@ void phVkEngine::run()
         // Imgui window for controlling background
         if (ImGui::Begin("background"))
         {
+            ImGui::SliderFloat("Render Scale", &render_scale, 0.3f, 1.f);
+
             ComputeEffect& selected = background_effects[current_background_effect];
 
             ImGui::Text("Selected effect: ", selected.name);
@@ -195,6 +204,10 @@ void phVkEngine::draw()
 
 
     // *** Setup ***
+    //
+    // Draw extent
+    draw_extent.height = std::min(swapchain_extent.height, draw_image.extent.height) * render_scale;
+    draw_extent.width = std::min(swapchain_extent.width, draw_image.extent.width) * render_scale;
 
     // GPU render fence wait (timeout 1s)
     VK_CHECK(vkWaitForFences(device, 1, &getCurrentFrame().render_fence, true, 1000000000));
@@ -204,9 +217,13 @@ void phVkEngine::draw()
 
     // Request an image from the swapchain (timeout 1s)
     uint32_t swapchain_img_index;
-
-    VK_CHECK(vkAcquireNextImageKHR(device, swapchain, 1000000000, 
-        getCurrentFrame().swapchain_semaphore, nullptr, &swapchain_img_index));
+    VkResult e = vkAcquireNextImageKHR(device, swapchain, 1000000000, 
+        getCurrentFrame().swapchain_semaphore, nullptr, &swapchain_img_index);
+    if (e == VK_ERROR_OUT_OF_DATE_KHR) 
+    {
+        resize_requested = true;    // Window resize, rebuild pipeline
+        return;
+    }
 
     // Reset render fence
     VK_CHECK(vkResetFences(device, 1, &getCurrentFrame().render_fence));
@@ -224,9 +241,6 @@ void phVkEngine::draw()
 
 
     // *** Recording ***
-
-    draw_extent.width = draw_image.extent.width;
-    draw_extent.height = draw_image.extent.height;
 
     // Start recording
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmd_begin_info));
@@ -302,7 +316,11 @@ void phVkEngine::draw()
     present_info.pImageIndices = &swapchain_img_index;
 
 	// Present the image to the window
-    VK_CHECK(vkQueuePresentKHR(graphics_queue, &present_info));
+    VkResult present_result = vkQueuePresentKHR(graphics_queue, &present_info);
+    if (present_result == VK_ERROR_OUT_OF_DATE_KHR) 
+    {
+        resize_requested = true;    // Window resize, rebuild pipeline
+    }
 
     // Increment frame count
     frame_number++;
@@ -587,6 +605,23 @@ void phVkEngine::destroySwapchain()
 }
 
 
+void phVkEngine::resizeSwapchain()
+{
+    // Tear down and rebulid swapchain with new window_extent
+
+    vkDeviceWaitIdle(device);
+
+    destroySwapchain();
+
+    int w, h;
+    SDL_GetWindowSize(window, &w, &h);
+    window_extent.width = w;
+    window_extent.height = h;
+
+    createSwapchain(window_extent.width, window_extent.height);
+}
+
+
 void phVkEngine::initVulkan()
 {
     // *** Init Instance ***
@@ -673,11 +708,14 @@ void phVkEngine::initSwapchain()
 
 	// *** Init Draw Image ***
     //
-    // Draw image size will match the window
+    // Set the draw image to monitor dimensions
+    // Will only render to a portion that matches the window size
     VkExtent3D draw_image_extent = 
     {
-        window_extent.width,
-        window_extent.height,
+        // TODO: Still crashes if resizing above these dimensions
+        // TODO: Pull monitor dimensions rather than hard-coding?
+        2560 /*window_extent.width*/,
+        1440 /*window_extent.height*/,
         1
     };
 
@@ -1018,8 +1056,10 @@ void phVkEngine::initMeshPipeline()
     pipeline_builder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
     // No multisampling
     pipeline_builder.setMultiSamplingNone();
-    // No blending
+
+    // Blending
     pipeline_builder.disableBlending();
+    pipeline_builder.enableBlendingAdditive();
 
 	// Depth testing
     //pipeline_builder.disableDepthtest();

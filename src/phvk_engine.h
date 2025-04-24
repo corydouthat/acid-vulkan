@@ -87,13 +87,19 @@ public:
 	bool is_initialized { false };
 	int frame_number { 0 };
 	bool stop_rendering { false };
-	VkExtent2D window_extent { 1700 , 900 };
+	bool resize_requested { false };
 
 	struct SDL_Window* window { nullptr };
 
+	// Extents
+	VkExtent2D window_extent{ 1700 , 900 };
+	VkExtent2D draw_extent;
+	VkExtent2D swapchain_extent;
+	float render_scale = { 1.f };
+
 	// Background effects objects
 	std::vector<ComputeEffect> background_effects;
-	int current_background_effect{ 0 };
+	int current_background_effect { 0 };
 
 	// Instance objects
 	VkInstance instance;				// Vulkan library handle
@@ -107,12 +113,10 @@ public:
 	VkFormat swapchain_img_format;		// Image format	
 	std::vector<VkImage> swapchain_images;	// Image handles
 	std::vector<VkImageView> swapchain_image_views;	// Image view handles
-	VkExtent2D swapchain_extent;			// Swapchain extent
 
 	// Vulkan image resources for drawing
 	AllocatedImage draw_image;
 	AllocatedImage depth_image;
-	VkExtent2D draw_extent;
 
 	// Queue / frame objects
 	FrameData frames[FRAME_OVERLAP];	// Use get_current_frame() to access
@@ -183,10 +187,10 @@ public:
 
 private:
 
-	// Create swapchain
+	// Swapchain functions
 	void createSwapchain(uint32_t width, uint32_t height);
-	// Destroy swapchain
 	void destroySwapchain();
+	void resizeSwapchain();
 
 	// Private initializers
 	void initVulkan();
