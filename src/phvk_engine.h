@@ -16,9 +16,13 @@
 #include <functional>
 
 #include "phvk_descriptors.h"
+#include "phvk_loader.h"
 
 // Number of buffering frames
 constexpr unsigned int FRAME_OVERLAP = 2;
+
+// DEBUG: Validation layers switch
+constexpr bool use_validation_layers = true;
 
 // Queue for deleting objects in FIFO order
 struct DeleteQueue
@@ -107,6 +111,7 @@ public:
 
 	// Vulkan image resources for drawing
 	AllocatedImage draw_image;
+	AllocatedImage depth_image;
 	VkExtent2D draw_extent;
 
 	// Queue / frame objects
@@ -134,6 +139,7 @@ public:
 
 	// Mesh data
 	GPUMeshBuffers rectangle;
+	std::vector<std::shared_ptr<MeshAsset>> test_meshes;
 
 	// Vulkan Memory Allocator (VMA)
 	VmaAllocator allocator;

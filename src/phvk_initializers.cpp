@@ -148,6 +148,8 @@ VkRenderingAttachmentInfo vkinit::attachment_info(
 }
 //< color_info
 //> depth_info
+// Note: Using reversed depth (near/far) where 1 is near and 0 is far
+//	     This is a common optimization in Vulkan to avoid depth precision issues
 VkRenderingAttachmentInfo vkinit::depth_attachment_info(
     VkImageView view, VkImageLayout layout /*= VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL*/)
 {

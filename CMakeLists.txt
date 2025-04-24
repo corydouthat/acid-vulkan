@@ -23,6 +23,7 @@ add_executable(acid-vulkan
 	src/phvk_engine.cpp
 	src/phvk_images.cpp
 	src/phvk_initializers.cpp
+	src/phvk_loader.cpp
 	src/phvk_pipelines.cpp
 )
 

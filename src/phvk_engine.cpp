@@ -23,20 +23,22 @@
 #include "imgui_impl_vulkan.h"
 
 #define VMA_IMPLEMENTATION  // Must include in exactly ONE cpp file
-#include "vk_mem_alloc.h"   // May be included elsewhere w/o VMA_IMPLEMENTATION
+#include <vk_mem_alloc.h>   // May be included elsewhere w/o VMA_IMPLEMENTATION
 
 #include "phvk_images.h"
 #include "phvk_pipelines.h"
 #include "phvk_descriptors.h"
+
+//#include "glm/glm.hpp"
+#include "glm/ext.hpp"
+#include "glm/gtc/matrix_transform.hpp"
+//#include <glm/gtx/transform.hpp>
 
 //#include <chrono>
 //#include <thread>
 
 // Singleton instance of the engine
 phVkEngine* loaded_engine = nullptr;
-
-// Validation layers switch (for debugging)
-constexpr bool use_validation_layers = true;
 
 phVkEngine& phVkEngine::getLoadedEngine() 
 { 
@@ -155,6 +157,13 @@ void phVkEngine::cleanup()
         // Wait for GPU to finish
         vkDeviceWaitIdle(device);
 
+        // Destroy mesh array buffers
+        for (auto& mesh : test_meshes) 
+        {
+            destroyBuffer(mesh->mesh_buffers.index_buffer);
+            destroyBuffer(mesh->mesh_buffers.vertex_buffer);
+        }
+
         // Flush the global deletion queue
 		main_delete_queue.flush();
 
@@ -238,6 +247,9 @@ void phVkEngine::draw()
     // Optimize layout for geometry rendering
     vkutil::transition_image(cmd, draw_image.image, 
         VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    // Transition depth image into depth attachment mode
+    vkutil::transition_image(cmd, depth_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
     drawGeometry(cmd);
 
@@ -324,16 +336,20 @@ void phVkEngine::drawGeometry(VkCommandBuffer cmd)
     // 
     // Attach draw image
     VkRenderingAttachmentInfo color_attachment = vkinit::attachment_info(draw_image.view, 
-        nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-    VkRenderingInfo render_info = vkinit::rendering_info(draw_extent, &color_attachment, nullptr);
+        nullptr, VK_IMAGE_LAYOUT_GENERAL);
+    
+    // Depth attachment
+    VkRenderingAttachmentInfo depth_attachment = vkinit::depth_attachment_info(depth_image.view, 
+        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    VkRenderingInfo render_info = vkinit::rendering_info(window_extent, 
+        &color_attachment, &depth_attachment);
 
     // Begin render pass
     vkCmdBeginRendering(cmd, &render_info);
 
 
 
-    // *** Draw Triangle ***
+    // *** Setup Viewport and Scissor ***
     // TODO: tutorial was unclear - is this part used for the mesh now?
     //
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, triangle_pipeline);
@@ -357,12 +373,6 @@ void phVkEngine::drawGeometry(VkCommandBuffer cmd)
 
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-    // TODO: tutorial error - drawing the triangle now and then ending rendering causes errors
-    // Launch a draw command to draw 3 vertices
-    vkCmdDraw(cmd, 3, 1, 0, 0);
-
-    //vkCmdEndRendering(cmd);
-
 
 
 	// *** Draw Rectangle Mesh ***
@@ -378,6 +388,44 @@ void phVkEngine::drawGeometry(VkCommandBuffer cmd)
     vkCmdBindIndexBuffer(cmd, rectangle.index_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
     vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
+
+
+
+    // *** Transform Matrix ***
+    // View matrix
+	//Mat4f view = Mat4f::transl(Vec3f(0, 0, -5));
+    glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, -5));
+	
+
+    // Camera projection
+    // Note: Using reversed depth (near/far) where 1 is near and 0 is far
+	//	     This is a common optimization in Vulkan to avoid depth precision issues
+    // TODO: get rid of GLM
+    // TODO: far = 0, near = 1 isn't working with my projPerspective function - need to fix and reverse
+    //Mat4f projection = Mat4f::projPerspective(
+    //    70.f, (float)draw_extent.width / (float)draw_extent.height, 0.1f, 10000.f);
+    glm::mat4 projection = glm::perspectiveRH_ZO(glm::radians(70.f),
+        (float)draw_extent.width / (float)draw_extent.height, 10000.f, 0.1f);
+
+    // Invert the Y direction on projection matrix
+    // glTF is designed for OpenGL which has +Y up (vs Vulkan which is +Y down)
+    projection[1][1] *= -1;
+
+    push_constants.world_matrix = Mat4f(glm::value_ptr(projection * view));
+
+
+    // *** Draw Mesh ***
+    //
+    push_constants.vertex_buffer_address = test_meshes[2]->mesh_buffers.vertex_buffer_address;
+
+    vkCmdPushConstants(cmd, mesh_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, 
+        sizeof(GPUDrawPushConstants), &push_constants);
+    vkCmdBindIndexBuffer(cmd, test_meshes[2]->mesh_buffers.index_buffer.buffer, 0, 
+        VK_INDEX_TYPE_UINT32);
+
+    vkCmdDrawIndexed(cmd, test_meshes[2]->surfaces[0].count, 1, 
+        test_meshes[2]->surfaces[0].start_index, 0, 0);
+
 
     vkCmdEndRendering(cmd);
 }
@@ -644,12 +692,13 @@ void phVkEngine::initVulkan()
 void phVkEngine::initSwapchain()
 {
     // *** Init Swapchain ***
+    //
     createSwapchain(window_extent.width, window_extent.height);
 
 
 
 	// *** Init Draw Image ***
-    
+    //
     // Draw image size will match the window
     VkExtent3D draw_image_extent = 
     {
@@ -687,9 +736,37 @@ void phVkEngine::initSwapchain()
     VkImageViewCreateInfo rview_info = vkinit::imageview_create_info(draw_image.format, draw_image.image, VK_IMAGE_ASPECT_COLOR_BIT);
     VK_CHECK(vkCreateImageView(device, &rview_info, nullptr, &draw_image.view));
 
+
+
+
+    // *** Init Depth Image ***
+    //
+    depth_image.format = VK_FORMAT_D32_SFLOAT;
+    depth_image.extent = draw_image_extent;
+    VkImageUsageFlags depth_image_usages{};
+    depth_image_usages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;  // Key to depth pass
+
+    VkImageCreateInfo dimg_info = vkinit::image_create_info(depth_image.format, depth_image_usages, draw_image_extent);
+
+    //allocate and create the image
+    vmaCreateImage(allocator, &dimg_info, &rimg_allocinfo, &depth_image.image, &depth_image.allocation, nullptr);
+
+    //build a image-view for the draw image to use for rendering
+    VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(depth_image.format, depth_image.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    VK_CHECK(vkCreateImageView(device, &dview_info, nullptr, &depth_image.view));
+
+
+
+
+    // *** Cleanup ***
+    //
     // Add to deletion functions to queue
     main_delete_queue.pushFunction([=]() 
         {
+            vkDestroyImageView(device, depth_image.view, nullptr);
+            vmaDestroyImage(allocator, depth_image.image, depth_image.allocation);
+            
             vkDestroyImageView(device, draw_image.view, nullptr);
             vmaDestroyImage(allocator, draw_image.image, draw_image.allocation);
         });
@@ -784,20 +861,20 @@ void phVkEngine::initDescriptors()
     draw_image_descriptors = global_descriptor_allocator.allocate(device, draw_image_descriptor_layout);
 
 	// Update descriptor set info - compute draw image
-    VkDescriptorImageInfo imgInfo{};
-    imgInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-    imgInfo.imageView = draw_image.view;
+    VkDescriptorImageInfo img_info{};
+    img_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    img_info.imageView = draw_image.view;
 
-    VkWriteDescriptorSet drawImageWrite = {};
-    drawImageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    drawImageWrite.pNext = nullptr;
-    drawImageWrite.dstBinding = 0;
-    drawImageWrite.dstSet = draw_image_descriptors;
-    drawImageWrite.descriptorCount = 1;
-    drawImageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    drawImageWrite.pImageInfo = &imgInfo;
+    VkWriteDescriptorSet draw_image_write = {};
+    draw_image_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    draw_image_write.pNext = nullptr;
+    draw_image_write.dstBinding = 0;
+    draw_image_write.dstSet = draw_image_descriptors;
+    draw_image_write.descriptorCount = 1;
+    draw_image_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    draw_image_write.pImageInfo = &img_info;
 
-    vkUpdateDescriptorSets(device, 1, &drawImageWrite, 0, nullptr);
+    vkUpdateDescriptorSets(device, 1, &draw_image_write, 0, nullptr);
 
     // Add delete functions to queue for descriptor allocator and layout
     main_delete_queue.pushFunction([&]() 
@@ -1030,31 +1107,35 @@ void phVkEngine::initMeshPipeline()
 
 
 	// *** Pipeline Creation ***
-    PipelineBuilder pipelineBuilder;
+    PipelineBuilder pipeline_builder;
 
     // Use the triangle layout
-    pipelineBuilder.pipeline_layout = mesh_pipeline_layout;
+    pipeline_builder.pipeline_layout = mesh_pipeline_layout;
     // Connect the vertex and pixel shaders to the pipeline
-    pipelineBuilder.setShaders(triangle_vertex_shader, triangle_frag_shader);
+    pipeline_builder.setShaders(triangle_vertex_shader, triangle_frag_shader);
     // Topology to draw triangles
-    pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    pipeline_builder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
     // Filled triangles
-    pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
+    pipeline_builder.setPolygonMode(VK_POLYGON_MODE_FILL);
     // No backface culling
-    pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    pipeline_builder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
     // No multisampling
-    pipelineBuilder.setMultiSamplingNone();
+    pipeline_builder.setMultiSamplingNone();
     // No blending
-    pipelineBuilder.disableBlending();
-	// No depth testing
-    pipelineBuilder.disableDepthtest();
+    pipeline_builder.disableBlending();
+
+	// Depth testing
+    //pipeline_builder.disableDepthtest();
+    // Note: Using reversed depth (near/far) where 1 is near and 0 is far
+    //	     This is a common optimization in Vulkan to avoid depth precision issues
+    pipeline_builder.enableDepthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
 
     // Connect the image format we will draw into, from draw image
-    pipelineBuilder.setColorAttachmentFormat(draw_image.format);
-    pipelineBuilder.setDepthFormat(VK_FORMAT_UNDEFINED);
+    pipeline_builder.setColorAttachmentFormat(draw_image.format);
+    pipeline_builder.setDepthFormat(depth_image.format);
 
     // Build the pipeline
-    mesh_pipeline = pipelineBuilder.buildPipeline(device);
+    mesh_pipeline = pipeline_builder.buildPipeline(device);
 
 
 
@@ -1178,5 +1259,7 @@ void phVkEngine::initDefaultData()
             destroyBuffer(rectangle.index_buffer);
             destroyBuffer(rectangle.vertex_buffer);
         });
+
+    test_meshes = loadGLTFMeshes(this, "../../../../assets/basicmesh.glb").value();
 
 }

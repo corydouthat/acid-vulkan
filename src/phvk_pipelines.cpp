@@ -221,6 +221,8 @@ void PipelineBuilder::disableDepthtest()
 //< depth_disable
 
 //> depth_enable
+// Note: Using reversed depth (near/far) where 1 is near and 0 is far
+//	     This is a common optimization in Vulkan to avoid depth precision issues
 void PipelineBuilder::enableDepthtest(bool depth_write_enable, VkCompareOp op)
 {
     depth_stencil.depthTestEnable = VK_TRUE;
