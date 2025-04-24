@@ -132,13 +132,10 @@ public:
 	// Pipelines
 	VkPipeline gradient_pipeline;
 	VkPipelineLayout gradient_pipeline_layout;
-	VkPipeline triangle_pipeline;
-	VkPipelineLayout triangle_pipeline_layout;
 	VkPipeline mesh_pipeline;
 	VkPipelineLayout mesh_pipeline_layout;
 
 	// Mesh data
-	GPUMeshBuffers rectangle;
 	std::vector<std::shared_ptr<MeshAsset>> test_meshes;
 
 	// Vulkan Memory Allocator (VMA)
@@ -199,7 +196,6 @@ private:
 	void initDescriptors();
 	void initPipelines();
 	void initBackgroundPipelines();
-	void initTrianglePipeline();
 	void initMeshPipeline();
 	void initImgui();
 	void initDefaultData();

@@ -29,11 +29,6 @@
 #include "phvk_pipelines.h"
 #include "phvk_descriptors.h"
 
-//#include "glm/glm.hpp"
-#include "glm/ext.hpp"
-#include "glm/gtc/matrix_transform.hpp"
-//#include <glm/gtx/transform.hpp>
-
 //#include <chrono>
 //#include <thread>
 
@@ -347,12 +342,8 @@ void phVkEngine::drawGeometry(VkCommandBuffer cmd)
     // Begin render pass
     vkCmdBeginRendering(cmd, &render_info);
 
-
-
-    // *** Setup Viewport and Scissor ***
-    // TODO: tutorial was unclear - is this part used for the mesh now?
-    //
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, triangle_pipeline);
+    // Bind pipeline
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline);
 
     // Set dynamic viewport and scissor
     VkViewport viewport = {};
@@ -375,43 +366,26 @@ void phVkEngine::drawGeometry(VkCommandBuffer cmd)
 
 
 
-	// *** Draw Rectangle Mesh ***
-    //
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline);
-
-    GPUDrawPushConstants push_constants;
-    push_constants.world_matrix = Mat4f();  // Identity
-    push_constants.vertex_buffer_address = rectangle.vertex_buffer_address;
-
-    vkCmdPushConstants(cmd, mesh_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, 
-        sizeof(GPUDrawPushConstants), &push_constants);
-    vkCmdBindIndexBuffer(cmd, rectangle.index_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-
-    vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
-
-
-
     // *** Transform Matrix ***
-    // View matrix
-	//Mat4f view = Mat4f::transl(Vec3f(0, 0, -5));
-    glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, -5));
-	
+    // 
+	// Push constants
+    GPUDrawPushConstants push_constants;
 
+    // View matrix
+	Mat4f view = Mat4f::transl(Vec3f(0, 0, -5));
+	
     // Camera projection
     // Note: Using reversed depth (near/far) where 1 is near and 0 is far
 	//	     This is a common optimization in Vulkan to avoid depth precision issues
-    // TODO: get rid of GLM
-    // TODO: far = 0, near = 1 isn't working with my projPerspective function - need to fix and reverse
-    //Mat4f projection = Mat4f::projPerspective(
-    //    70.f, (float)draw_extent.width / (float)draw_extent.height, 0.1f, 10000.f);
-    glm::mat4 projection = glm::perspectiveRH_ZO(glm::radians(70.f),
-        (float)draw_extent.width / (float)draw_extent.height, 10000.f, 0.1f);
+    Mat4f projection = Mat4f::projPerspective(
+        1.22173f, (float)draw_extent.width / (float)draw_extent.height, 10000.f, 0.1f, false);
 
     // Invert the Y direction on projection matrix
     // glTF is designed for OpenGL which has +Y up (vs Vulkan which is +Y down)
     projection[1][1] *= -1;
 
-    push_constants.world_matrix = Mat4f(glm::value_ptr(projection * view));
+    push_constants.world_matrix = projection * view;
+
 
 
     // *** Draw Mesh ***
@@ -890,7 +864,6 @@ void phVkEngine::initPipelines()
     initBackgroundPipelines();
 
 	// Graphics Pipelines
-	initTrianglePipeline();
 	initMeshPipeline();
 }
 
@@ -993,82 +966,6 @@ void phVkEngine::initBackgroundPipelines()
             vkDestroyPipeline(device, sky.pipeline, nullptr);
             vkDestroyPipeline(device, gradient.pipeline, nullptr);
         });
-}
-
-void phVkEngine::initTrianglePipeline()
-{
-    // *** Pipeline Module ***
-
-    VkShaderModule triangle_frag_shader;
-    if (!vkutil::load_shader_module("../../../../shaders/colored_triangle.frag.spv", device, &triangle_frag_shader)) 
-    {
-        fmt::print("Error when building the triangle fragment shader module\n");
-    }
-    else 
-    {
-        fmt::print("Triangle fragment shader succesfully loaded\n");
-    }
-
-    VkShaderModule triangle_vertex_shader;
-    if (!vkutil::load_shader_module("../../../../shaders/colored_triangle.vert.spv", device, &triangle_vertex_shader)) 
-    {
-        fmt::print("Error when building the triangle vertex shader module\n");
-    }
-    else 
-    {
-        fmt::print("Triangle vertex shader succesfully loaded\n");
-    }
-
-
-
-    // *** Pipeline Layout ***
-    // Build the pipeline layout that controls the inputs/outputs of the shader
-    // We are not using descriptor sets or other systems yet, so no need to use anything other than empty default
-    VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
-    VK_CHECK(vkCreatePipelineLayout(device, &pipeline_layout_info, nullptr, &triangle_pipeline_layout));
-
-
-
-    // *** Pipeline Creation ***
-    PipelineBuilder pipeline_builder;
-
-    //use the triangle layout we created
-    pipeline_builder.pipeline_layout = triangle_pipeline_layout;
-    //connecting the vertex and pixel shaders to the pipeline
-    pipeline_builder.setShaders(triangle_vertex_shader, triangle_frag_shader);
-    //it will draw triangles
-    pipeline_builder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    //filled triangles
-    pipeline_builder.setPolygonMode(VK_POLYGON_MODE_FILL);
-    //no backface culling
-    pipeline_builder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-    //no multisampling
-    pipeline_builder.setMultiSamplingNone();
-    //no blending
-    pipeline_builder.disableBlending();
-    //no depth testing
-    pipeline_builder.disableDepthtest();
-
-    //connect the image format we will draw into, from draw image
-    pipeline_builder.setColorAttachmentFormat(draw_image.format);
-    pipeline_builder.setDepthFormat(VK_FORMAT_UNDEFINED);
-
-    //finally build the pipeline
-    triangle_pipeline = pipeline_builder.buildPipeline(device);
-
-
-
-	// *** Cleanup ***
-    //clean structures
-    vkDestroyShaderModule(device, triangle_frag_shader, nullptr);
-    vkDestroyShaderModule(device, triangle_vertex_shader, nullptr);
-
-    main_delete_queue.pushFunction([&]() 
-        {
-            vkDestroyPipelineLayout(device, triangle_pipeline_layout, nullptr);
-            vkDestroyPipeline(device, triangle_pipeline, nullptr);
-        });
-
 }
 
 void phVkEngine::initMeshPipeline()
@@ -1227,39 +1124,41 @@ void phVkEngine::initImgui()
 void phVkEngine::initDefaultData() 
 {
 
-    // *** Create Rectangle Mesh ***
-    std::array<Vertex, 4> rect_vertices;
+    //// *** Create Rectangle Mesh ***
+    //std::array<Vertex, 4> rect_vertices;
 
-    rect_vertices[0].position = { 0.5,-0.5, 0 };
-    rect_vertices[1].position = { 0.5,0.5, 0 };
-    rect_vertices[2].position = { -0.5,-0.5, 0 };
-    rect_vertices[3].position = { -0.5,0.5, 0 };
+    //rect_vertices[0].position = { 0.5,-0.5, 0 };
+    //rect_vertices[1].position = { 0.5,0.5, 0 };
+    //rect_vertices[2].position = { -0.5,-0.5, 0 };
+    //rect_vertices[3].position = { -0.5,0.5, 0 };
 
-    rect_vertices[0].color = { 0,0, 0,1 };
-    rect_vertices[1].color = { 0.5,0.5,0.5 ,1 };
-    rect_vertices[2].color = { 1,0, 0,1 };
-    rect_vertices[3].color = { 0,1, 0,1 };
+    //rect_vertices[0].color = { 0,0, 0,1 };
+    //rect_vertices[1].color = { 0.5,0.5,0.5 ,1 };
+    //rect_vertices[2].color = { 1,0, 0,1 };
+    //rect_vertices[3].color = { 0,1, 0,1 };
 
-    std::array<uint32_t, 6> rect_indices;
+    //std::array<uint32_t, 6> rect_indices;
 
-    rect_indices[0] = 0;
-    rect_indices[1] = 1;
-    rect_indices[2] = 2;
+    //rect_indices[0] = 0;
+    //rect_indices[1] = 1;
+    //rect_indices[2] = 2;
 
-    rect_indices[3] = 2;
-    rect_indices[4] = 1;
-    rect_indices[5] = 3;
+    //rect_indices[3] = 2;
+    //rect_indices[4] = 1;
+    //rect_indices[5] = 3;
 
-    rectangle = uploadMesh(rect_indices, rect_vertices);
+    //rectangle = uploadMesh(rect_indices, rect_vertices);
 
-    // *** Cleanup ***
-    // Add delete functions to queue
-    main_delete_queue.pushFunction([&]() 
-        {
-            destroyBuffer(rectangle.index_buffer);
-            destroyBuffer(rectangle.vertex_buffer);
-        });
+    //// *** Cleanup ***
+    //// Add delete functions to queue
+    //main_delete_queue.pushFunction([&]() 
+    //    {
+    //        destroyBuffer(rectangle.index_buffer);
+    //        destroyBuffer(rectangle.vertex_buffer);
+    //    });
 
+
+    // TODO: why are we not adding deletion functions here instead of manually in cleanup?
     test_meshes = loadGLTFMeshes(this, "../../../../assets/basicmesh.glb").value();
 
 }
