@@ -14,15 +14,9 @@
 #include "phvk_initializers.h"
 #include "phvk_types.h"
 
-//#include <glm/gtx/quaternion.hpp>
+#include "element_traits_for_fastgltf.h"
 
-// TODO: Don't even know why glm/gtx/component_wise is trying to be included
-//       Is it used by fastgltf somewhere I can't see?
-//       Ultimately want to eliminate all GLM references
-#define GLM_ENABLE_EXPERIMENTAL
 #include <fastgltf/core.hpp>
-#include <fastgltf/glm_element_traits.hpp>
-//#include <fastgltf/parser.hpp>
 #include <fastgltf/tools.hpp>
 
 std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGLTFMeshes(phVkEngine* engine, std::filesystem::path file_path)
@@ -92,10 +86,8 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGLTFMeshes(phVkEngine
                 fastgltf::Accessor& pos_accessor = gltf.accessors[p.findAttribute("POSITION")->accessorIndex];
                 vertices.resize(vertices.size() + pos_accessor.count);
 
-                // TODO: why do these throw an error when trying to use Vec3f instead?
-                // Having to manually convert, and can't eliminate glm dependency
-                fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, pos_accessor,
-                    [&](glm::vec3 v, size_t index) 
+                fastgltf::iterateAccessorWithIndex<Vec3f>(gltf, pos_accessor,
+                    [&](Vec3f v, size_t index) 
                     {
                         Vertex new_vert;
                         new_vert.position = Vec3f(v.x, v.y, v.z);
@@ -111,8 +103,8 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGLTFMeshes(phVkEngine
             auto normals = p.findAttribute("NORMAL");
             if (normals != p.attributes.end()) {
 
-                fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, gltf.accessors[(*normals).accessorIndex],
-                    [&](glm::vec3 v, size_t index) 
+                fastgltf::iterateAccessorWithIndex<Vec3f>(gltf, gltf.accessors[(*normals).accessorIndex],
+                    [&](Vec3f v, size_t index) 
                     {
                         vertices[initial_vert + index].normal = Vec3f(v.x, v.y, v.z);
                     });
@@ -122,8 +114,8 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGLTFMeshes(phVkEngine
             auto uv = p.findAttribute("TEXCOORD_0");
             if (uv != p.attributes.end()) {
 
-                fastgltf::iterateAccessorWithIndex<glm::vec2>(gltf, gltf.accessors[(*uv).accessorIndex],
-                    [&](glm::vec2 v, size_t index) 
+                fastgltf::iterateAccessorWithIndex<Vec2f>(gltf, gltf.accessors[(*uv).accessorIndex],
+                    [&](Vec2f v, size_t index) 
                     {
                         vertices[initial_vert + index].uv_x = v.x;
                         vertices[initial_vert + index].uv_y = v.y;
@@ -134,8 +126,8 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGLTFMeshes(phVkEngine
             auto colors = p.findAttribute("COLOR_0");
             if (colors != p.attributes.end()) {
 
-                fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[(*colors).accessorIndex],
-                    [&](glm::vec4 v, size_t index) 
+                fastgltf::iterateAccessorWithIndex<Vec4f>(gltf, gltf.accessors[(*colors).accessorIndex],
+                    [&](Vec4f v, size_t index) 
                     {
 						vertices[initial_vert + index].color = Vec4f(v.x, v.y, v.z, v.w);
                     });
