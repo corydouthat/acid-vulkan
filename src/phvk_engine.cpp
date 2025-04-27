@@ -205,13 +205,11 @@ void phVkEngine::draw()
 {
     // Using vkinit and vkutil functions below, naming style differs
 
+    // Scene nodes
+    updateScene();
 
     // *** Setup ***
     //
-    // Draw extent
-    draw_extent.height = std::min(swapchain_extent.height, draw_image.extent.height) * render_scale;
-    draw_extent.width = std::min(swapchain_extent.width, draw_image.extent.width) * render_scale;
-
     // GPU render fence wait (timeout 1s)
     VK_CHECK(vkWaitForFences(device, 1, &getCurrentFrame().render_fence, true, 1000000000));
 
@@ -231,6 +229,11 @@ void phVkEngine::draw()
         resize_requested = true;    // Window resize, rebuild pipeline
         return;
     }
+
+    // Draw extent
+    draw_extent.height = std::min(swapchain_extent.height, draw_image.extent.height) * render_scale;
+    draw_extent.width = std::min(swapchain_extent.width, draw_image.extent.width) * render_scale;
+
 
     // Reset render fence
     VK_CHECK(vkResetFences(device, 1, &getCurrentFrame().render_fence));
@@ -324,6 +327,8 @@ void phVkEngine::draw()
 
 	// Present the image to the window
     VkResult present_result = vkQueuePresentKHR(graphics_queue, &present_info);
+
+    // TODO: this isn't in the chapter 4 code
     if (present_result == VK_ERROR_OUT_OF_DATE_KHR) 
     {
         resize_requested = true;    // Window resize, rebuild pipeline
@@ -354,6 +359,41 @@ void phVkEngine::drawGeometry(VkCommandBuffer cmd)
 {
     // *** Setup ***
     // 
+    // Attach draw image
+    VkRenderingAttachmentInfo color_attachment = vkinit::attachment_info(draw_image.view,
+        nullptr, VK_IMAGE_LAYOUT_GENERAL);
+
+    // Attach depth image
+    VkRenderingAttachmentInfo depth_attachment = vkinit::depth_attachment_info(depth_image.view,
+        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    VkRenderingInfo render_info = vkinit::rendering_info(window_extent,
+        &color_attachment, &depth_attachment);
+
+    // Begin render pass
+    vkCmdBeginRendering(cmd, &render_info);
+
+    // Bind pipeline
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline); // diff
+
+    // Set dynamic viewport and scissor
+    VkViewport viewport = {};
+    viewport.x = 0;
+    viewport.y = 0;
+    viewport.width = draw_extent.width;
+    viewport.height = draw_extent.height;
+    viewport.minDepth = 0.f;
+    viewport.maxDepth = 1.f;
+
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor = {};
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent.width = viewport.width;
+    scissor.extent.height = viewport.height;
+
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+
     // Allocate a new uniform buffer for the scene data
     AllocatedBuffer gpu_scene_data_buffer = createBuffer(sizeof(GPUSceneData), 
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
@@ -372,96 +412,91 @@ void phVkEngine::drawGeometry(VkCommandBuffer cmd)
     VkDescriptorSet globalDescriptor = getCurrentFrame().frame_descriptors.allocate(
         device, gpu_scene_data_descriptor_layout);
 
+    // Descriptor writer
     DescriptorWriter writer;
     writer.writeBuffer(0, gpu_scene_data_buffer.buffer, sizeof(GPUSceneData), 0, 
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     writer.updateSet(device, globalDescriptor);
 
-    // Attach draw image
-    VkRenderingAttachmentInfo color_attachment = vkinit::attachment_info(draw_image.view, 
-        nullptr, VK_IMAGE_LAYOUT_GENERAL);
-    
-    // Depth attachment
-    VkRenderingAttachmentInfo depth_attachment = vkinit::depth_attachment_info(depth_image.view, 
-        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-    VkRenderingInfo render_info = vkinit::rendering_info(window_extent, 
-        &color_attachment, &depth_attachment);
 
-    // Begin render pass
-    vkCmdBeginRendering(cmd, &render_info);
-
-    // Bind pipeline
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline);
-
-    // Set dynamic viewport and scissor
-    VkViewport viewport = {};
-    viewport.x = 0;
-    viewport.y = 0;
-    viewport.width = draw_extent.width;
-    viewport.height = draw_extent.height;
-    viewport.minDepth = 0.f;
-    viewport.maxDepth = 1.f;
-
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-    VkRect2D scissor = {};
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    scissor.extent.width = draw_extent.width;
-    scissor.extent.height = draw_extent.height;
-
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
-
-
-
-    // Bind a texture
-    VkDescriptorSet image_set = getCurrentFrame().frame_descriptors.allocate(
-        device, single_image_descriptor_layout);
+    // Draw scene nodes meshes
+    for (const RenderObject& draw : main_draw_context.opaque_surfaces) 
     {
-        DescriptorWriter writer;
-        writer.writeImage(0, error_checkerboard_image.view, default_sampler_nearest, 
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        // TODO binding every draw is inefficient - will fix later in tutorial
+        
+        // Bind material pipeline
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->pipeline);
+        // Bind global descriptors
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 
+            0, 1, &globalDescriptor, 0, nullptr);
+        // Bind material descriptors
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 
+            1, 1, &draw.material->material_set, 0, nullptr);
 
-        writer.updateSet(device, image_set);
+        vkCmdBindIndexBuffer(cmd, draw.index_buffer, 0, VK_INDEX_TYPE_UINT32);
+
+        GPUDrawPushConstants push_constants;
+        push_constants.vertex_buffer_address = draw.vertex_buffer_address;
+        push_constants.world_matrix = draw.transform;
+        vkCmdPushConstants(cmd, draw.material->pipeline->layout, 
+            VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+
+        vkCmdDrawIndexed(cmd, draw.index_count, 1, draw.first_index, 0, 0);
     }
 
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, 
-        mesh_pipeline_layout, 0, 1, &image_set, 0, nullptr);
 
 
 
-    // *** Transform Matrix ***
-    // 
-    // View matrix
-	Mat4f view = Mat4f::transl(Vec3f(0, 0, -5));
-	
-    // Camera projection
-    // Note: Using reversed depth (near/far) where 1 is near and 0 is far
-	//	     This is a common optimization in Vulkan to avoid depth precision issues
-    Mat4f projection = Mat4f::projPerspective(
-        1.22173f, (float)draw_extent.width / (float)draw_extent.height, 10000.f, 0.1f, false);
 
-    // Invert the Y direction on projection matrix
-    // glTF is designed for OpenGL which has +Y up (vs Vulkan which is +Y down)
-    projection[1][1] *= -1;
 
-    // Push constants
-    GPUDrawPushConstants push_constants;
-    push_constants.world_matrix = projection * view;
+ //   // Bind a texture
+ //   VkDescriptorSet image_set = getCurrentFrame().frame_descriptors.allocate(
+ //       device, single_image_descriptor_layout);
+ //   {
+ //       DescriptorWriter writer;
+ //       writer.writeImage(0, error_checkerboard_image.view, default_sampler_nearest, 
+ //           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+
+ //       writer.updateSet(device, image_set);
+ //   }
+
+ //   vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, 
+ //       mesh_pipeline_layout, 0, 1, &image_set, 0, nullptr);
 
 
 
-    // *** Draw Mesh ***
-    //
-    push_constants.vertex_buffer_address = test_meshes[2]->mesh_buffers.vertex_buffer_address;
+ //   // *** Transform Matrix ***
+ //   // 
+ //   // View matrix
+	//Mat4f view = Mat4f::transl(Vec3f(0, 0, -5));
+	//
+ //   // Camera projection
+ //   // Note: Using reversed depth (near/far) where 1 is near and 0 is far
+	////	     This is a common optimization in Vulkan to avoid depth precision issues
+ //   Mat4f projection = Mat4f::projPerspective(
+ //       1.22173f, (float)draw_extent.width / (float)draw_extent.height, 10000.f, 0.1f, false);
 
-    vkCmdPushConstants(cmd, mesh_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, 
-        sizeof(GPUDrawPushConstants), &push_constants);
-    vkCmdBindIndexBuffer(cmd, test_meshes[2]->mesh_buffers.index_buffer.buffer, 0, 
-        VK_INDEX_TYPE_UINT32);
+ //   // Invert the Y direction on projection matrix
+ //   // glTF is designed for OpenGL which has +Y up (vs Vulkan which is +Y down)
+ //   projection[1][1] *= -1;
 
-    vkCmdDrawIndexed(cmd, test_meshes[2]->surfaces[0].count, 1, 
-        test_meshes[2]->surfaces[0].start_index, 0, 0);
+ //   // Push constants
+ //   GPUDrawPushConstants push_constants;
+ //   push_constants.world_matrix = projection * view;
+
+
+
+ //   // *** Draw Mesh ***
+ //   //
+ //   push_constants.vertex_buffer_address = test_meshes[2]->mesh_buffers.vertex_buffer_address;
+
+ //   vkCmdPushConstants(cmd, mesh_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, 
+ //       sizeof(GPUDrawPushConstants), &push_constants);
+ //   vkCmdBindIndexBuffer(cmd, test_meshes[2]->mesh_buffers.index_buffer.buffer, 0, 
+ //       VK_INDEX_TYPE_UINT32);
+
+ //   vkCmdDrawIndexed(cmd, test_meshes[2]->surfaces[0].count, 1, 
+ //       test_meshes[2]->surfaces[0].start_index, 0, 0);
 
 
     vkCmdEndRendering(cmd);
@@ -478,6 +513,30 @@ void phVkEngine::drawImgui(VkCommandBuffer cmd, VkImageView target_image_view)
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
 
     vkCmdEndRendering(cmd);
+}
+
+void phVkEngine::updateScene()
+{
+    main_draw_context.opaque_surfaces.clear();
+
+    loaded_nodes["Suzanne"]->Draw(Mat4f(), main_draw_context);
+
+    scene_data.view = Mat4f::transl(Vec3f(0, 0, -5));
+    // Camera projection
+    // Note: Using reversed depth (near/far) where 1 is near and 0 is far
+    //	     This is a common optimization in Vulkan to avoid depth precision issues
+    scene_data.proj = Mat4f::projPerspective(1.22173f,
+        (float)window_extent.width / (float)window_extent.height, 10000.f, 0.1f);
+
+    // Invert the Y direction on projection matrix
+    // glTF is designed for OpenGL which has +Y up (vs Vulkan which is +Y down)
+    scene_data.proj[1][1] *= -1;
+    scene_data.view_proj = scene_data.proj * scene_data.view;
+
+    // Some default lighting parameters
+    scene_data.ambient_color = Vec4f(0.1f, 0.1f, 0.1f, 0.1f);
+    scene_data.sunlight_color = Vec4f(1.f, 1.f, 1.f, 1.f);
+    scene_data.sunlight_direction = Vec4f(0.f, 1.f, 0.5f, 1.f);
 }
 
 void phVkEngine::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function)
@@ -1214,7 +1273,7 @@ void phVkEngine::initMeshPipeline()
 	// *** Pipeline Creation ***
     PipelineBuilder pipeline_builder;
 
-    // Use the triangle layout
+    // Pipeline layout
     pipeline_builder.pipeline_layout = mesh_pipeline_layout;
     // Connect the vertex and pixel shaders to the pipeline
     pipeline_builder.setShaders(triangle_vertex_shader, triangle_frag_shader);
@@ -1418,6 +1477,23 @@ void phVkEngine::initDefaultData()
     // *** Load Suzanne Monkey mesh ***
     // TODO: why are we not adding deletion functions here instead of manually in cleanup?
     test_meshes = loadGLTFMeshes(this, "../../../../assets/basicmesh.glb").value();
+
+
+    // *** Set Up Default Meshes
+    for (auto& m : test_meshes) 
+    {
+        std::shared_ptr<MeshNode> new_node = std::make_shared<MeshNode>();
+        new_node->mesh = m;
+
+        new_node->local_transform = Mat4f{ 1.f };
+        new_node->world_transform = Mat4f{ 1.f };
+
+        for (auto& s : new_node->mesh->surfaces) {
+            s.material = std::make_shared<GLTFMaterial>(default_data);
+        }
+
+        loaded_nodes[m->name] = std::move(new_node);
+    }
 }
 
 void GLTFMetallicRoughness::buildPipelines(phVkEngine* engine)

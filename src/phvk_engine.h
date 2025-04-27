@@ -163,7 +163,7 @@ public:
 	std::vector<ComputeEffect> background_effects;
 	int current_background_effect { 0 };
 
-	// Instance objects
+	// Vulkan instance objects
 	VkInstance instance;				// Vulkan library handle
 	VkDebugUtilsMessengerEXT debug_messenger;	// Vulkan debug output handle
 	VkPhysicalDevice physical_device;	// GPU chosen as the default device
@@ -221,6 +221,8 @@ public:
 
 	// Mesh data
 	std::vector<std::shared_ptr<MeshAsset>> test_meshes;
+	DrawContext main_draw_context;
+	std::unordered_map<std::string, std::shared_ptr<Node>> loaded_nodes;
 
 	// Vulkan Memory Allocator (VMA)
 	VmaAllocator allocator;
@@ -252,6 +254,9 @@ public:
 	void drawBackground(VkCommandBuffer cmd);
 	void drawGeometry(VkCommandBuffer cmd);
 	void drawImgui(VkCommandBuffer cmd, VkImageView target_image_view);
+
+	// Scene
+	void updateScene();
 
 	// Immediate submit
 	void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);

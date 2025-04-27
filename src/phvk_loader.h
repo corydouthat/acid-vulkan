@@ -12,7 +12,7 @@
 #include <filesystem>
 
 // DEBUG: Replace vertex colors with vertex normals
-constexpr bool override_colors = true;
+constexpr bool override_colors = false;
 
 class phVkEngine;
 
