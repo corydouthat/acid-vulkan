@@ -44,6 +44,26 @@ struct AllocatedBuffer
     VmaAllocationInfo info;
 };
 
+enum class MaterialPass : uint8_t 
+{
+    main_color,
+    transparent,
+    other
+};
+
+struct MaterialPipeline 
+{
+    VkPipeline pipeline;
+    VkPipelineLayout layout;
+};
+
+struct MaterialInstance 
+{
+    MaterialPipeline* pipeline;
+    VkDescriptorSet material_set;
+    MaterialPass pass_type;
+};
+
 struct Vertex 
 {
     // TODO: will optimize to compact data later in the vkguide.dev tutorial
@@ -53,6 +73,16 @@ struct Vertex
     Vec3f normal;
     float uv_y;
     Vec4f color;
+};
+
+struct GPUSceneData 
+{
+    Mat4f view;
+    Mat4f proj;
+    Mat4f view_proj;
+    Vec4f ambient_color;
+    Vec4f sunlight_direction; // w for sun power
+    Vec4f sunlight_color;
 };
 
 // Holds the resources needed for a mesh
@@ -71,6 +101,43 @@ struct GPUDrawPushConstants
     VkDeviceAddress vertex_buffer_address;  // Buffer address
 };
 
+// Base class for a renderable dynamic object
+struct DrawContext;     // Forward declaration
+class IRenderable 
+{
+    virtual void draw(const Mat4f& top_matrix, DrawContext& ctx) = 0;
+};
+
+// Implementation of a drawable scene node. The scene node 
+// can hold children and will also keep a transform to propagate to them
+struct Node : public IRenderable 
+{
+
+    // Parent pointer must be a weak pointer to avoid circular dependencies
+    std::weak_ptr<Node> parent;
+    std::vector<std::shared_ptr<Node>> children;
+
+    Mat4f local_transform;
+    Mat4f world_transform;
+
+    void refreshTransform(const Mat4f& parent_matrix)
+    {
+        world_transform = parent_matrix * local_transform;
+        for (auto c : children) 
+        {
+            c->refreshTransform(world_transform);
+        }
+    }
+
+    virtual void Draw(const Mat4f& top_matrix, DrawContext& ctx)
+    {
+        // Draw children
+        for (auto& c : children) 
+        {
+            c->Draw(top_matrix, ctx);
+        }
+    }
+};
 
 #define VK_CHECK(x)                                                     \
     do {                                                                \
