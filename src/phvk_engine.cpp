@@ -164,16 +164,6 @@ void phVkEngine::cleanup()
         // Wait for GPU to finish
         vkDeviceWaitIdle(device);
 
-        // Destroy mesh array buffers
-        for (auto& mesh : test_meshes) 
-        {
-            destroyBuffer(mesh->mesh_buffers.index_buffer);
-            destroyBuffer(mesh->mesh_buffers.vertex_buffer);
-        }
-
-        // Flush the global deletion queue
-		main_delete_queue.flush();
-
         for (int i = 0; i < FRAME_OVERLAP; i++) {
             // Note: destroying the command pool also destroys buffers allocated from it
             vkDestroyCommandPool(device, frames[i].command_pool, nullptr);
@@ -185,6 +175,18 @@ void phVkEngine::cleanup()
 
 			frames[i].delete_queue.flush();
         }
+
+        // Destroy mesh array buffers
+        for (auto& mesh : test_meshes)
+        {
+            destroyBuffer(mesh->mesh_buffers.index_buffer);
+            destroyBuffer(mesh->mesh_buffers.vertex_buffer);
+        }
+
+        metal_rough_material.clearResources(device);
+
+        // Flush the global deletion queue
+        main_delete_queue.flush();
 
         destroySwapchain();
 
@@ -373,7 +375,7 @@ void phVkEngine::drawGeometry(VkCommandBuffer cmd)
     vkCmdBeginRendering(cmd, &render_info);
 
     // Bind pipeline
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline); // diff
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline);
 
     // Set dynamic viewport and scissor
     VkViewport viewport = {};
@@ -444,61 +446,6 @@ void phVkEngine::drawGeometry(VkCommandBuffer cmd)
         vkCmdDrawIndexed(cmd, draw.index_count, 1, draw.first_index, 0, 0);
     }
 
-
-
-
-
-
- //   // Bind a texture
- //   VkDescriptorSet image_set = getCurrentFrame().frame_descriptors.allocate(
- //       device, single_image_descriptor_layout);
- //   {
- //       DescriptorWriter writer;
- //       writer.writeImage(0, error_checkerboard_image.view, default_sampler_nearest, 
- //           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-
- //       writer.updateSet(device, image_set);
- //   }
-
- //   vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, 
- //       mesh_pipeline_layout, 0, 1, &image_set, 0, nullptr);
-
-
-
- //   // *** Transform Matrix ***
- //   // 
- //   // View matrix
-	//Mat4f view = Mat4f::transl(Vec3f(0, 0, -5));
-	//
- //   // Camera projection
- //   // Note: Using reversed depth (near/far) where 1 is near and 0 is far
-	////	     This is a common optimization in Vulkan to avoid depth precision issues
- //   Mat4f projection = Mat4f::projPerspective(
- //       1.22173f, (float)draw_extent.width / (float)draw_extent.height, 10000.f, 0.1f, false);
-
- //   // Invert the Y direction on projection matrix
- //   // glTF is designed for OpenGL which has +Y up (vs Vulkan which is +Y down)
- //   projection[1][1] *= -1;
-
- //   // Push constants
- //   GPUDrawPushConstants push_constants;
- //   push_constants.world_matrix = projection * view;
-
-
-
- //   // *** Draw Mesh ***
- //   //
- //   push_constants.vertex_buffer_address = test_meshes[2]->mesh_buffers.vertex_buffer_address;
-
- //   vkCmdPushConstants(cmd, mesh_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, 
- //       sizeof(GPUDrawPushConstants), &push_constants);
- //   vkCmdBindIndexBuffer(cmd, test_meshes[2]->mesh_buffers.index_buffer.buffer, 0, 
- //       VK_INDEX_TYPE_UINT32);
-
- //   vkCmdDrawIndexed(cmd, test_meshes[2]->surfaces[0].count, 1, 
- //       test_meshes[2]->surfaces[0].start_index, 0, 0);
-
-
     vkCmdEndRendering(cmd);
 }
 
@@ -519,7 +466,16 @@ void phVkEngine::updateScene()
 {
     main_draw_context.opaque_surfaces.clear();
 
-    loaded_nodes["Suzanne"]->Draw(Mat4f(), main_draw_context);
+    loaded_nodes["Suzanne"]->draw(Mat4f(), main_draw_context);
+
+    for (int x = -3; x < 3; x++) 
+    {
+
+        Mat4f scale = Mat4f(Mat3f::scale(Vec3f(0.2, 0.2, 0.2)));
+        Mat4f translation = Mat4f::transl(Vec3f(x, 1, 0));
+
+        loaded_nodes["Cube"]->draw(translation * scale, main_draw_context);
+    }
 
     scene_data.view = Mat4f::transl(Vec3f(0, 0, -5));
     // Camera projection
@@ -844,7 +800,7 @@ void phVkEngine::initVulkan()
     // Use vkbootstrap to select a GPU (physical device)
     // We want a GPU that can write to the SDL surface and supports vulkan 1.3 with the correct features
     vkb::PhysicalDeviceSelector selector{ vkb_inst };
-    vkb::PhysicalDevice vkb_physicaldevice = selector
+    vkb::PhysicalDevice vkb_physical_device = selector
         .set_minimum_version(1, 3)
         .set_required_features_13(features13)
         .set_required_features_12(features12)
@@ -853,12 +809,12 @@ void phVkEngine::initVulkan()
         .value();
 
     // Use vkbootstrap to create the logical Vulkan device
-    vkb::DeviceBuilder device_builder{ vkb_physicaldevice };
+    vkb::DeviceBuilder device_builder{ vkb_physical_device };
     vkb::Device vkbdevice = device_builder.build().value();
 
     // Get the VkDevice handle used in the rest of a vulkan application
     device = vkbdevice.device;
-    physical_device = vkb_physicaldevice.physical_device;
+    physical_device = vkb_physical_device.physical_device;
 
     
     // *** Init Queue ***
@@ -890,8 +846,6 @@ void phVkEngine::initSwapchain()
     //
     createSwapchain(window_extent.width, window_extent.height);
 
-
-
 	// *** Init Draw Image ***
     //
     // Set the draw image to monitor dimensions
@@ -900,8 +854,8 @@ void phVkEngine::initSwapchain()
     {
         // TODO: Still crashes if resizing above these dimensions
         // TODO: Pull monitor dimensions rather than hard-coding?
-        2560 /*window_extent.width*/,
-        1440 /*window_extent.height*/,
+        window_extent.width/*2560*/,    // TOOD
+        window_extent.height/*1440*/,   // TODO
         1
     };
 
@@ -946,10 +900,10 @@ void phVkEngine::initSwapchain()
 
     VkImageCreateInfo dimg_info = vkinit::image_create_info(depth_image.format, depth_image_usages, draw_image_extent);
 
-    //allocate and create the image
+    // Allocate and create the image
     vmaCreateImage(allocator, &dimg_info, &rimg_alloc_info, &depth_image.image, &depth_image.allocation, nullptr);
 
-    //build a image-view for the draw image to use for rendering
+    // Build a image-view for the draw image to use for rendering
     VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(depth_image.format, depth_image.image, VK_IMAGE_ASPECT_DEPTH_BIT);
 
     VK_CHECK(vkCreateImageView(device, &dview_info, nullptr, &depth_image.view));
@@ -1088,7 +1042,10 @@ void phVkEngine::initDescriptors()
     main_delete_queue.pushFunction([&]() 
         {
             global_descriptor_allocator.destroyPools(device);
+
             vkDestroyDescriptorSetLayout(device, draw_image_descriptor_layout, nullptr);
+            vkDestroyDescriptorSetLayout(device, single_image_descriptor_layout, nullptr);
+            vkDestroyDescriptorSetLayout(device, gpu_scene_data_descriptor_layout, nullptr);
         });
 
 
@@ -1201,7 +1158,7 @@ void phVkEngine::initBackgroundPipelines()
     ComputeEffect sky;
     sky.layout = gradient_pipeline_layout;
     sky.name = "sky";
-    sky.data = {};
+    sky.data = { Vec4f() };
     // Default sky parameters
     sky.data.data1 = Vec4f(0.1, 0.2, 0.4, 0.97);
 
@@ -1219,7 +1176,7 @@ void phVkEngine::initBackgroundPipelines()
     vkDestroyShaderModule(device, sky_shader, nullptr);
 
     // Add delete functions to queue for pipeline and layout
-    main_delete_queue.pushFunction([&]()
+    main_delete_queue.pushFunction([=]()
         {
             vkDestroyPipelineLayout(device, gradient_pipeline_layout, nullptr);
             vkDestroyPipeline(device, sky.pipeline, nullptr);
@@ -1238,7 +1195,7 @@ void phVkEngine::initMeshPipeline()
     }
     else 
     {
-        fmt::print("Fragment shader succesfully loaded \n");
+        fmt::print("Fragment shader successfully loaded \n");
     }
 
     VkShaderModule triangle_vertex_shader;
@@ -1249,7 +1206,7 @@ void phVkEngine::initMeshPipeline()
     }
     else 
     {
-        fmt::print("Vertex shader succesfully loaded \n");
+        fmt::print("Vertex shader successfully loaded \n");
     }
 
     VkPushConstantRange buffer_range{};
@@ -1485,10 +1442,11 @@ void phVkEngine::initDefaultData()
         std::shared_ptr<MeshNode> new_node = std::make_shared<MeshNode>();
         new_node->mesh = m;
 
-        new_node->local_transform = Mat4f{ 1.f };
-        new_node->world_transform = Mat4f{ 1.f };
+        new_node->local_transform = Mat4f();    // Identity
+        new_node->world_transform = Mat4f();    // Identity
 
-        for (auto& s : new_node->mesh->surfaces) {
+        for (auto& s : new_node->mesh->surfaces) 
+        {
             s.material = std::make_shared<GLTFMaterial>(default_data);
         }
 
@@ -1613,7 +1571,7 @@ MaterialInstance GLTFMetallicRoughness::writeMaterial(VkDevice device, MaterialP
 
 void MeshNode::draw(const Mat4f& top_matrix, DrawContext& ctx)
 {
-    Mat4f nodeMatrix = top_matrix * world_transform;
+    Mat4f node_matrix = top_matrix * world_transform;
 
     for (auto& s : mesh->surfaces)
     {
@@ -1623,12 +1581,12 @@ void MeshNode::draw(const Mat4f& top_matrix, DrawContext& ctx)
         def.index_buffer = mesh->mesh_buffers.index_buffer.buffer;
         def.material = &s.material->data;
 
-        def.transform = nodeMatrix;
+        def.transform = node_matrix;
         def.vertex_buffer_address = mesh->mesh_buffers.vertex_buffer_address;
 
         ctx.opaque_surfaces.push_back(def);
     }
 
     // recurse down
-    Node::Draw(top_matrix, ctx);
+    Node::draw(top_matrix, ctx);
 }

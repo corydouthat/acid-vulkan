@@ -129,12 +129,12 @@ struct Node : public IRenderable
         }
     }
 
-    virtual void Draw(const Mat4f& top_matrix, DrawContext& ctx)
+    virtual void draw(const Mat4f& top_matrix, DrawContext& ctx)
     {
         // Draw children
         for (auto& c : children) 
         {
-            c->Draw(top_matrix, ctx);
+            c->draw(top_matrix, ctx);
         }
     }
 };
