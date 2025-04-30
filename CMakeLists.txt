@@ -19,6 +19,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # Add source to this project's executable.
 add_executable(acid-vulkan 
 	main.cpp
+	src/phvk_camera.cpp
 	src/phvk_descriptors.cpp
 	src/phvk_engine.cpp
 	src/phvk_images.cpp

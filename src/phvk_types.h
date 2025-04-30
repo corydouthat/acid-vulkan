@@ -25,6 +25,7 @@
 
 // TODO: make template or switch to doubles?
 #include "vec.hpp"
+#include "quat.hpp"
 #include "mat.hpp"
 
 

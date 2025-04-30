@@ -73,6 +73,12 @@ void phVkEngine::init()
     initImgui();
     initDefaultData();
 
+    // Camera
+    main_camera.velocity = Vec3f();
+	main_camera.position = Vec3f(0.f, 0.f, 5.f);
+    main_camera.pitch = 0.f;
+	main_camera.yaw = 0.f;
+
     is_initialized = true;
 }
 
@@ -103,6 +109,9 @@ void phVkEngine::run()
                     stop_rendering = false;
                 }
             }
+
+            // Handle camera movement
+            main_camera.processSDLEvent(sdl_event);
 
             // Send SDL event to imgui for handling
             ImGui_ImplSDL2_ProcessEvent(&sdl_event);
@@ -477,7 +486,11 @@ void phVkEngine::updateScene()
         loaded_nodes["Cube"]->draw(translation * scale, main_draw_context);
     }
 
-    scene_data.view = Mat4f::transl(Vec3f(0, 0, -5));
+    main_camera.update();
+
+    scene_data.view = main_camera.getViewMatrix();
+    //scene_data.view = Mat4f::transl(Vec3f(0, 0, -5));
+
     // Camera projection
     // Note: Using reversed depth (near/far) where 1 is near and 0 is far
     //	     This is a common optimization in Vulkan to avoid depth precision issues

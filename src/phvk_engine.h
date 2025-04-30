@@ -18,6 +18,8 @@
 #include "phvk_descriptors.h"
 #include "phvk_loader.h"
 
+#include "phvk_camera.h"
+
 // Number of buffering frames
 constexpr unsigned int FRAME_OVERLAP = 2;
 
@@ -223,6 +225,9 @@ public:
 	std::vector<std::shared_ptr<MeshAsset>> test_meshes;
 	DrawContext main_draw_context;
 	std::unordered_map<std::string, std::shared_ptr<Node>> loaded_nodes;
+
+	// Camera
+	Camera main_camera;
 
 	// Vulkan Memory Allocator (VMA)
 	VmaAllocator allocator;
