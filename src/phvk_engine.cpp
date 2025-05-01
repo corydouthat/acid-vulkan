@@ -75,9 +75,15 @@ void phVkEngine::init()
 
     // Camera
     main_camera.velocity = Vec3f();
-	main_camera.position = Vec3f(0.f, 0.f, 5.f);
+	main_camera.position = Vec3f(30.f, 0.f, -85.f);
     main_camera.pitch = 0.f;
 	main_camera.yaw = 0.f;
+
+    // GLTF Scene
+    std::string structure_path = { "../../../../assets/structure.glb" };
+    auto structure_file = LoadGLTF(this, structure_path);
+    assert(structure_file.has_value());
+    loaded_scenes["structure"] = *structure_file;
 
     is_initialized = true;
 }
@@ -172,6 +178,9 @@ void phVkEngine::cleanup()
 
         // Wait for GPU to finish
         vkDeviceWaitIdle(device);
+
+        // GLTF Scenes
+        loaded_scenes.clear();
 
         for (int i = 0; i < FRAME_OVERLAP; i++) {
             // Note: destroying the command pool also destroys buffers allocated from it
@@ -506,6 +515,8 @@ void phVkEngine::updateScene()
     scene_data.ambient_color = Vec4f(0.1f, 0.1f, 0.1f, 0.1f);
     scene_data.sunlight_color = Vec4f(1.f, 1.f, 1.f, 1.f);
     scene_data.sunlight_direction = Vec4f(0.f, 1.f, 0.5f, 1.f);
+
+    loaded_scenes["structure"]->draw(Mat4f(), main_draw_context);
 }
 
 void phVkEngine::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function)
@@ -1013,11 +1024,10 @@ void phVkEngine::initSyncStructures()
 void phVkEngine::initDescriptors()
 {
     // Descriptor pool: 10 sets with 1 image each
-    std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = 
-    { 
-        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 },
-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 } 
-    };
+    std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = { 
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 } };
 
     global_descriptor_allocator.init(device, 10, sizes);
 

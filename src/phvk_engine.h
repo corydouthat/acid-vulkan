@@ -226,6 +226,9 @@ public:
 	DrawContext main_draw_context;
 	std::unordered_map<std::string, std::shared_ptr<Node>> loaded_nodes;
 
+	// GLTF scenes
+	std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loaded_scenes;
+
 	// Camera
 	Camera main_camera;
 
