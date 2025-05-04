@@ -70,6 +70,7 @@ struct RenderObject
 	VkBuffer index_buffer;
 
 	MaterialInstance* material;
+	Bounds bounds;
 
 	Mat4f transform;
 	VkDeviceAddress vertex_buffer_address;
@@ -79,6 +80,14 @@ struct DrawContext
 {
 	std::vector<RenderObject> opaque_surfaces;
 	std::vector<RenderObject> transparent_surfaces;
+};
+
+struct EngineStats 
+{
+	float frame_time;
+	int triangle_count;
+	int drawcall_count;
+	float mesh_draw_time;
 };
 
 struct MeshNode : public Node 
@@ -224,6 +233,7 @@ public:
 	// Mesh data
 	std::vector<std::shared_ptr<MeshAsset>> test_meshes;
 	DrawContext main_draw_context;
+	DrawContext draw_commands;
 	std::unordered_map<std::string, std::shared_ptr<Node>> loaded_nodes;
 
 	// GLTF scenes
@@ -231,6 +241,8 @@ public:
 
 	// Camera
 	Camera main_camera;
+
+	EngineStats stats;
 
 	// Vulkan Memory Allocator (VMA)
 	VmaAllocator allocator;
@@ -259,7 +271,7 @@ public:
 
 	// Draw loop
 	void draw();
-	void drawBackground(VkCommandBuffer cmd);
+	void drawMain(VkCommandBuffer cmd);
 	void drawGeometry(VkCommandBuffer cmd);
 	void drawImgui(VkCommandBuffer cmd, VkImageView target_image_view);
 

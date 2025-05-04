@@ -17,6 +17,13 @@ constexpr bool override_colors = false;
 
 class phVkEngine;
 
+struct Bounds 
+{
+    Vec3f origin;
+    float sphere_radius;
+    Vec3f extents;
+};
+
 struct GLTFMaterial 
 {
     MaterialInstance data;
