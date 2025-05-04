@@ -1,6 +1,4 @@
-﻿# CMakeList.txt : CMake project for acid-vulkan, include source and define
-# project specific logic here.
-#
+﻿
 cmake_minimum_required (VERSION 3.8)
 
 # Enable Hot Reload for MSVC compilers if supported.
@@ -13,23 +11,18 @@ find_package(Vulkan REQUIRED)
 
 project (acid-vulkan)
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+if (NOT TARGET acid-vulkan)
+	add_library(acid-vulkan INTERFACE
+		#including files here will force Visual Studio to show library
+		
+	)
+endif()
 
-# Add source to this project's executable.
-add_executable(acid-vulkan 
-	main.cpp
-	src/phvk_camera.cpp
-	src/phvk_descriptors.cpp
-	src/phvk_engine.cpp
-	src/phvk_images.cpp
-	src/phvk_initializers.cpp
-	src/phvk_loader.cpp
-	src/phvk_pipelines.cpp
-)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # Set target include directories
-target_include_directories(acid-vulkan PRIVATE
+target_include_directories(acid-vulkan INTERFACE
 	src
 )
 
@@ -38,10 +31,10 @@ add_subdirectory(dependencies dependencies)
 
 # Target link libraries
 target_link_libraries(acid-vulkan 
-	PUBLIC Vulkan::Vulkan
-	PRIVATE dependencies
+	INTERFACE Vulkan::Vulkan
+	INTERFACE dependencies
 )
 
-if (CMAKE_VERSION VERSION_GREATER 3.12)
-  set_property(TARGET acid-vulkan PROPERTY CXX_STANDARD 20)
-endif()
+# Example to include a local main function / testbench
+add_executable(acid-vulkan-testbench "testbench/main.cpp")
+target_link_libraries(acid-vulkan-testbench PRIVATE acid-vulkan)

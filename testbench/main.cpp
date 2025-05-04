@@ -3,17 +3,15 @@
 // Acid Game Engine - Vulkan
 // Testbench
 
-#include "phvk_engine.h"
-
 int main()
 {
-	phVkEngine engine;
+	//phVkEngine engine;
 
-	engine.init();
+	//engine.init();
 
-	engine.run();
+	//engine.run();
 
-	engine.cleanup();
+	//engine.cleanup();
 
 	return 0;
 }
