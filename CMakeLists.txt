@@ -7,6 +7,9 @@ if (POLICY CMP0141)
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
 endif()
 
+# Needed for SDL
+set(CMAKE_BUILD_TYPE RelWithDebInfo)
+
 find_package(Vulkan REQUIRED)
 
 project (acid-vulkan)
@@ -14,7 +17,7 @@ project (acid-vulkan)
 if (NOT TARGET acid-vulkan)
 	add_library(acid-vulkan INTERFACE
 		#including files here will force Visual Studio to show library
-		
+		"src/phVkEngine.hpp"
 	)
 endif()
 
@@ -31,7 +34,8 @@ add_subdirectory(dependencies dependencies)
 
 # Target link libraries
 target_link_libraries(acid-vulkan 
-	INTERFACE Vulkan::Vulkan
+	INTERFACE Vulkan::Vulkan	# TODO: optional?
+	INTERFACE SDL3::SDL3		# TODO: optional?
 	INTERFACE dependencies
 )
 

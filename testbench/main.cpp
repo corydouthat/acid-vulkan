@@ -1,11 +1,11 @@
-﻿// Copyright (c) 2025, Cory Douthat
-//
-// Acid Game Engine - Vulkan
+﻿// Acid Game Engine - Vulkan
 // Testbench
+
+#include "phVkEngine.hpp"
 
 int main()
 {
-	//phVkEngine engine;
+	phVkEngine<float> engine;
 
 	//engine.init();
 
