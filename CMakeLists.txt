@@ -17,6 +17,7 @@ project (acid-vulkan)
 if (NOT TARGET acid-vulkan)
 	add_library(acid-vulkan INTERFACE
 		#including files here will force Visual Studio to show library
+		"src/phVkDescriptors.hpp"
 		"src/phVkEngine.hpp"
 	)
 endif()
