@@ -13,7 +13,8 @@
 
 #include <VkBootstrap.h> 
 
-#include <vk_mem_alloc.h>
+#define VMA_IMPLEMENTATION  // Must include in exactly ONE cpp file
+#include <vk_mem_alloc.h>   // May be included elsewhere w/o VMA_IMPLEMENTATION
 
 #include "Vec.hpp"
 #include "Quat.hpp"
@@ -22,15 +23,7 @@
 
 #include "phVkTypes.h"
 #include "phVkInitDefaults.h"
-
-
-// TODO: Make swapchain mode / frame buffer configurable
-constexpr unsigned int FRAME_BUFFER_COUNT = 2;  // Number of swapchain images
-constexpr VkPresentModeKHR SWAPCHAIN_MODE =
-    //VK_PRESENT_MODE_IMMEDIATE_KHR
-    //VK_PRESENT_MODE_MAILBOX_KHR
-	VK_PRESENT_MODE_FIFO_KHR;                   // Vsync mode
-    //VK_PRESENT_MODE_FIFO_RELAXED_KHR
+#include "phVkPipelines.hpp"
 
 
 // TODO: singleton?
@@ -67,14 +60,24 @@ private:
     phVkImage draw_image;               // Swapchain draw image
 	phVkImage depth_image; 	            // Swapchain depth image 
 
-    // Frame Data
+    // Frame Data (per-frame sync, command, and descriptor objects)
     phVkFrameData frames[FRAME_BUFFER_COUNT];	// Use getCurrentFrame() to access
 
-    // Command Buffers / Pools
-    // Note that frame data contains per-frame command objects
-    VkFence imm_fence;
-    VkCommandBuffer imm_command_buffer;
-    VkCommandPool imm_command_pool;
+    // Immediate Commands
+	VkFence imm_fence;                  // Fence for immediate commands
+    VkCommandBuffer imm_command_buffer; // Immediate command buffer
+	VkCommandPool imm_command_pool;     // Immediate command pool
+
+    // Descriptors
+    phVkDescriptorAllocator global_descriptor_allocator;
+    VkDescriptorSet draw_image_descriptors;
+    VkDescriptorSetLayout gpu_scene_data_descriptor_layout;
+    VkDescriptorSetLayout draw_image_descriptor_layout;
+    VkDescriptorSetLayout single_image_descriptor_layout;
+
+    // Pipelines
+    phVkPipeline mesh_pipeline;
+
 
 public:
     // PUBLIC FUNCTIONS
@@ -100,7 +103,7 @@ private:
     void initVulkan();
     void initSwapchain();
     void initCommands();
-    void initSyncStructures();
+    void initSyncObjects();
     void initDescriptors();
     void initPipelines();
 
@@ -108,6 +111,11 @@ private:
     void createSwapchain(uint32_t width, uint32_t height);
     void destroySwapchain();
 	void resizeSwapchain();
+
+	// -- Pipeline Functions --
+    void createBackgroundPipelines();
+    void createMeshPipelines();
+    void createMaterialPipelines();
 };
 
 
@@ -119,27 +127,47 @@ bool phVkEngine<T>::init(uint32_t width, uint32_t height, std::string title)
 		return false;
     initVulkan();
 	initSwapchain();
+    initCommands();
+    initSyncObjects();
+    initDescriptors();
+    initPipelines();
+
+    return true;
 }
 
 
 template <typename T>
 void phVkEngine<T>::cleanup()
 {
-	// -- Destroy resources in revers order of creation --
+	// -- Destroy resources in reverse order of creation --
 
-    // Destroy standard command buffers
-    vkDestroyCommandPool(device, imm_command_pool, nullptr);
-    for (int i = 0; i < FRAME_BUFFER_COUNT; i++) 
+    
+
+    // Destroy descriptor set objects
+    for (int i = 0; i < FRAME_BUFFER_COUNT; i++)
     {
-        //// Note: destroying the command pool also destroys buffers allocated from it
-        //vkDestroyCommandPool(device, frames[i].command_pool, nullptr);
+        frames[i].frame_descriptors.destroyPools(device);
+    }
+    global_descriptor_allocator.destroyPools(device);
+    vkDestroyDescriptorSetLayout(device, draw_image_descriptor_layout, nullptr);
+    vkDestroyDescriptorSetLayout(device, single_image_descriptor_layout, nullptr);
+    vkDestroyDescriptorSetLayout(device, gpu_scene_data_descriptor_layout, nullptr);
 
-        // destroy sync objects
+    // Destroy sync objects
+    vkDestroyFence(device, imm_fence, nullptr);
+    for (int i = 0; i < FRAME_BUFFER_COUNT; i++)
+    {
         vkDestroyFence(device, frames[i].render_fence, nullptr);
         vkDestroySemaphore(device, frames[i].render_semaphore, nullptr);
         vkDestroySemaphore(device, frames[i].swapchain_semaphore, nullptr);
+    }
 
-        frames[i].delete_queue.flush();
+    // Destroy command pools
+    vkDestroyCommandPool(device, imm_command_pool, nullptr);
+    for (int i = 0; i < FRAME_BUFFER_COUNT; i++) 
+    {
+        // Note: destroying the command pool also destroys buffers allocated from it
+        vkDestroyCommandPool(device, frames[i].command_pool, nullptr);
     }
 
     // Destroy swapchain images
@@ -372,12 +400,6 @@ void phVkEngine<T>::initCommands()
         cmd_alloc_info.commandBufferCount = 1;
 
         VK_CHECK(vkAllocateCommandBuffers(device, &cmd_alloc_info, &frames[i].command_buffer));
-
-        frames[i].delete_queue.pushFunction([&]()
-            {
-                // Note: destroying the command pool also destroys buffers allocated from it
-                vkDestroyCommandPool(device, frames[i].command_pool, nullptr);
-            });
     }
 
 
@@ -392,6 +414,110 @@ void phVkEngine<T>::initCommands()
 
     VK_CHECK(vkAllocateCommandBuffers(device, &cmd_alloc_info, &imm_command_buffer));
 
+}
+
+
+template<typename T>
+void phVkEngine<T>::initSyncObjects()
+{
+    // Create CPU/GPU sync objects
+    // One fence to signal when the gpu has finished rendering the frame
+    // Two semaphores to synchronize rendering with swapchain
+
+    VkFenceCreateInfo fence_create_info = {}
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+		.pNext = nullptr,
+        .flags = VK_FENCE_CREATE_SIGNALED_BIT;  // Start signaled to avoid blocking
+
+    VkSemaphoreCreateInfo semaphore_create_info = {}
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+		.pNext = nullptr,
+		.flags = 0;
+
+    for (int i = 0; i < FRAME_BUFFER_COUNT; i++) 
+    {
+        VK_CHECK(vkCreateFence(device, &fence_create_info, nullptr, &frames[i].render_fence));
+
+        VK_CHECK(vkCreateSemaphore(device, &semaphore_create_info, nullptr, &frames[i].swapchain_semaphore));
+        VK_CHECK(vkCreateSemaphore(device, &semaphore_create_info, nullptr, &frames[i].render_semaphore));
+    }
+
+    // Immediate commands fence
+    VK_CHECK(vkCreateFence(device, &fence_create_info, nullptr, &imm_fence));
+}
+
+
+template<typename T>
+void phVkEngine<T>::initDescriptors()
+{
+    // Descriptor pool type counts
+    std::vector<phVkDescriptorAllocator::PoolSizeRatio> sizes = {
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 } };
+
+    // Allocate 10 sets
+    global_descriptor_allocator.init(device, 10, sizes);
+
+    // Descriptor set layout - compute draw image
+    // Note: using block/naked scope to avoid clearing the builder
+    {
+        phVkDescriptorLayoutBuilder builder;
+        builder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+        draw_image_descriptor_layout = builder.build(device,
+            VK_SHADER_STAGE_COMPUTE_BIT);
+    }
+	// Descriptor set layout - GPU scene data
+    {
+        phVkDescriptorLayoutBuilder builder;
+        builder.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        gpu_scene_data_descriptor_layout = builder.build(device,
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+    }
+	// Descriptor set layout - single image
+    {
+        phVkDescriptorLayoutBuilder builder;
+        builder.addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        single_image_descriptor_layout = builder.build(device,
+            VK_SHADER_STAGE_FRAGMENT_BIT);
+    }
+
+    // Allocate descriptor set - compute draw image
+    draw_image_descriptors = global_descriptor_allocator.allocate(device, draw_image_descriptor_layout);
+
+    // Update descriptor set info - compute draw image
+    phVkDescriptorWriter writer;
+    writer.writeImage(0, draw_image.view, VK_NULL_HANDLE,
+        VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+
+    writer.updateSet(device, draw_image_descriptors);
+
+    // Initialize per-frame descriptor pools
+    for (int i = 0; i < FRAME_BUFFER_COUNT; i++)
+    {
+        std::vector<phVkDescriptorAllocator::PoolSizeRatio> frame_sizes =
+        {
+            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
+        };
+
+        frames[i].frame_descriptors = phVkDescriptorAllocator{};
+		// 1000 sets per pool (TODO: make configurable)
+        frames[i].frame_descriptors.init(device, 1000, frame_sizes);
+    }
+}
+
+
+template<typename T>
+void phVkEngine<T>::initPipelines()
+{
+    createBackgroundPipeline();
+
+    createMeshPipeline();
+
+    createMaterialPipeline();
 }
 
 
@@ -454,5 +580,67 @@ void phVkEngine<T>::resizeSwapchain()
     SDL_GetWindowSize(window, &w, &h);
 
     createSwapchain(w, h);
+}
+
+
+template <typename T>
+void phVkEngine<T>::createBackgroundPipeline()
+{
+
+}
+
+
+template <typename T>
+void phVkEngine<T>::createMeshPipeline()
+{
+    if (mesh_pipeline.device == 0)
+        mesh_pipeline = phVkPipeline(device, VULKAN_GRAPHICS_PIPELINE);
+
+    // Shader modules
+    mesh_pipeline.loadVertexShader("../../../../shaders/colored_triangle_mesh.vert.spv");   // TODO: change
+    mesh_pipeline.loadFragmentShader("../../../../shaders/colored_triangle_mesh.frag.spv"); // TODO: change
+
+    // Push constant ranges
+    // Initialize with default for graphics pipeline at some point
+    //mesh_pipeline.addPushConstantRange(/**/);
+
+    // Descriptor set layouts
+    mesh_pipeline.addDescriptorSetLayout(single_image_descriptor_layout);
+
+    // Pipeline layout
+    // Will be built by createPipeline()
+    // mesh_pipeline.setLayoutFlags();
+
+    // Graphics configuration
+    //mesh_pipeline.setGraphicsShaders(triangle_vertex_shader, triangle_frag_shader);
+    mesh_pipeline.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    mesh_pipeline.setPolygonMode(VK_POLYGON_MODE_FILL);
+    mesh_pipeline.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    mesh_pipeline.setMultiSamplingNone();
+
+    // Blending configuration
+    mesh_pipeline.disableBlending();
+
+    // Depth test configuration
+    // Note: Using reversed depth (near/far) where 1 is near and 0 is far
+    //	     This is a common optimization in Vulkan to avoid depth precision issues
+    mesh_pipeline.enableDepthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
+
+    // Connect the image format from draw image
+    mesh_pipeline.addColorAttachmentFormat(draw_image.format);
+    mesh_pipeline.setDepthFormat(depth_image.format);
+
+    // Build the pipeline
+    mesh_pipeline.createPipeline();
+
+    // Shader modules have been compiled into the pipeline and are no longer needed
+    mesh_pipeline.destroyShaderModules();
+}
+
+
+template <typename T>
+void phVkEngine<T>::createMaterialPipeline()
+{
+
 }
 

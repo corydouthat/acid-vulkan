@@ -39,6 +39,8 @@
 
 #include <vk_mem_alloc.h>
 
+#include "phVkDescriptors.hpp"
+
 struct phVkImage
 {
     VkImage image;
@@ -57,34 +59,34 @@ struct phVkFrameData
     VkCommandPool command_pool;
     VkCommandBuffer command_buffer;
 
-    DescriptorAllocator frame_descriptors;
+    phVkDescriptorAllocator frame_descriptors;
 
-    phVkDeleteQueue delete_queue;
+    //phVkDeleteQueue delete_queue;
 };
 
 
-// Queue for deleting objects in FIFO order
-struct phVkDeleteQueue
-{
-    // TODO: replace std:: functions?
-    std::deque<std::function<void()>> fifo;
-
-    void pushFunction(std::function<void()>&& function)
-    {
-        fifo.push_back(function);
-    }
-
-    void flush()
-    {
-        // Reverse iterate the deletion queue to execute all the functions
-        for (auto it = fifo.rbegin(); it != fifo.rend(); it++)
-        {
-            (*it)(); // Call function
-        }
-
-        fifo.clear();
-    }
-};
+//// Queue for deleting objects in FIFO order
+//struct phVkDeleteQueue
+//{
+//    // TODO: replace std:: functions?
+//    std::deque<std::function<void()>> fifo;
+//
+//    void pushFunction(std::function<void()>&& function)
+//    {
+//        fifo.push_back(function);
+//    }
+//
+//    void flush()
+//    {
+//        // Reverse iterate the deletion queue to execute all the functions
+//        for (auto it = fifo.rbegin(); it != fifo.rend(); it++)
+//        {
+//            (*it)(); // Call function
+//        }
+//
+//        fifo.clear();
+//    }
+//};
 
 #define VK_CHECK(x)                                                     \
     do                                                                  \
