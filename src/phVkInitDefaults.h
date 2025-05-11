@@ -79,7 +79,7 @@ VkCommandBufferAllocateInfo phVkDefaultCommandBufferAllocateInfo()
 	return temp;
 }
 
-VkPipelineShaderStageCreateInfo phvkDefaultPipelineShader()
+VkPipelineShaderStageCreateInfo phVkDefaultPipelineShader()
 {
 	VkPipelineShaderStageCreateInfo temp = {};
 
@@ -94,7 +94,7 @@ VkPipelineShaderStageCreateInfo phvkDefaultPipelineShader()
 	return temp;
 }
 
-VkPipelineShaderStageCreateInfo phvkDefaultShaderStageCreateInfo()
+VkPipelineShaderStageCreateInfo phVkDefaultShaderStageCreateInfo()
 {
 	VkPipelineShaderStageCreateInfo temp = {};
 
@@ -105,6 +105,80 @@ VkPipelineShaderStageCreateInfo phvkDefaultShaderStageCreateInfo()
     //temp.module;
     //temp.pName;
     //temp.pSpecializationInfo;
+
+    return temp;
+}
+
+VkCommandBufferBeginInfo phVkDefaultCommandBufferBeginInfo()
+{
+    VkCommandBufferBeginInfo temp = {};
+
+    temp.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    temp.pNext = nullptr;
+    //temp.flags;
+    temp.pInheritanceInfo = nullptr;
+
+    return temp;
+}
+
+VkCommandBufferSubmitInfo phVkDefaultCommandBufferSubmitInfo()
+{
+    VkCommandBufferSubmitInfo temp{};
+
+    temp.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    temp.pNext = nullptr;
+    //temp.commandBuffer;
+    temp.deviceMask = 0;
+
+    return temp;
+}
+
+VkSemaphoreSubmitInfo phVkDefaultSemaphoreSubmitInfo()
+{
+    VkSemaphoreSubmitInfo temp{};
+
+    temp.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    temp.pNext = nullptr;
+    //temp.semaphore;
+    temp.value = 1;
+    //temp.stageMask;
+    temp.deviceIndex = 0;
+
+    return temp;
+}
+
+VkSubmitInfo2 phVkDefaultSubmitInfo2()
+{
+    VkSubmitInfo2 temp = {};
+
+    temp.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    temp.pNext = nullptr;
+    //temp.flags;
+
+    //temp.waitSemaphoreInfoCount;
+    //temp.pWaitSemaphoreInfos;
+
+    //temp.commandBufferInfoCount;
+    //temp.pCommandBufferInfos;
+
+    //temp.signalSemaphoreInfoCount;
+    //temp.pSignalSemaphoreInfos;
+
+    return temp;
+}
+
+VkPresentInfoKHR phVkDefaultPresentInfo()
+{
+    VkPresentInfoKHR temp = {};
+
+    temp.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    temp.pNext = nullptr;
+    temp.waitSemaphoreCount = 0;
+    temp.pWaitSemaphores = nullptr;
+    temp.swapchainCount = 0;
+    temp.pSwapchains = nullptr;
+    temp.pImageIndices = nullptr;
+    //temp.pResults = nullptr;
 
     return temp;
 }

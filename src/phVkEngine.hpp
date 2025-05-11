@@ -24,6 +24,7 @@
 #include "phVkTypes.h"
 #include "phVkInitDefaults.h"
 #include "phVkPipelines.hpp"
+#include "phVkImages.hpp"
 
 
 // TODO: singleton?
@@ -35,11 +36,12 @@ private:
 
     // Meta Data
     bool is_initialized = false;
-    int frame_number = 0;
     bool stop_rendering = false;
     bool resize_requested = false;
+    bool sdl_quit = false;
+    int frame_number = 0;
 
-    // Window
+    // SDL / Window
     SDL_Window* window = nullptr;
 
     // Vulkan
@@ -76,11 +78,15 @@ private:
     VkDescriptorSetLayout single_image_descriptor_layout;
 
     // Pipelines
+	phVkPipeline background_pipeline;
     phVkPipeline mesh_pipeline;
 
 
 public:
     // PUBLIC FUNCTIONS
+
+    phVkEngine() { ; }
+    ~phVkEngine() { cleanup(); }
 
     // -- Init Functions --
     bool init(uint32_t width, uint32_t height, std::string title);
@@ -89,14 +95,20 @@ public:
     // -- Get Functions --
     phVkFrameData& getCurrentFrame() { return frames[frame_number % FRAME_BUFFER_COUNT]; };
 
+    // -- Run Functions --
+    void run();
+
     // -- Cleanup --
     void cleanup();
 
-    phVkEngine() { ; }
-    ~phVkEngine() { cleanup(); }
-
 private:
     // PRIVATE FUNCTIONS
+
+    // -- Run Functions --
+    void draw();
+    void renderImGui();
+    void drawBackground();
+    void drawMesh();
 
     // -- Init Functions --
     bool createWindow(uint32_t width, uint32_t height, std::string title);
@@ -111,6 +123,7 @@ private:
     void createSwapchain(uint32_t width, uint32_t height);
     void destroySwapchain();
 	void resizeSwapchain();
+    VkExtent2D determineDrawExtent();
 
 	// -- Pipeline Functions --
     void createBackgroundPipelines();
@@ -137,11 +150,57 @@ bool phVkEngine<T>::init(uint32_t width, uint32_t height, std::string title)
 
 
 template <typename T>
+void phVkEngine<T>::run()
+{
+    SDL_Event sdl_event;
+
+    // -- Handle SDL Events --
+    while (SDL_PollEvent(&sdl_event) != 0)  // Until queue is empty
+    {
+        // Quit
+        if (sdl_event.type == SDL_QUIT)
+            sdl_quit = true;
+
+        // Window minimize/restore
+        if (sdl_event.type == SDL_WINDOWEVENT)
+        {
+            if (sdl_event.window.event == SDL_WINDOWEVENT_MINIMIZED)
+                stop_rendering = true;
+            if (sdl_event.window.event == SDL_WINDOWEVENT_RESTORED)
+                stop_rendering = false;
+        }
+
+        // Key/mouse callbacks
+        // TODO
+
+        // Send SDL event to imgui for handling
+        ImGui_ImplSDL3_ProcessEvent(&sdl_event);
+    }
+
+
+    // -- Window Resize --
+    if (resize_requested)
+    {
+        resizeSwapchain();
+        resize_requested = false;
+    }
+
+
+    // -- Draw --
+    draw();
+
+}
+
+
+template <typename T>
 void phVkEngine<T>::cleanup()
 {
 	// -- Destroy resources in reverse order of creation --
 
-    
+    // Pipelines
+	mesh_pipeline.clearToDefaults();
+	background_pipeline.clearToDefaults();
+    // TODO: material pipelines
 
     // Destroy descriptor set objects
     for (int i = 0; i < FRAME_BUFFER_COUNT; i++)
@@ -188,6 +247,188 @@ void phVkEngine<T>::cleanup()
 	
     // Quit SDL
 	SDL_Quit();
+}
+
+
+template <typename T>
+void phVkEngine<T>::draw()
+{
+    // -- Render GUI --
+    // Does not draw to a Vulkan impage yet
+    renderImGui();
+
+
+    // -- Last Frame Wrap-up --
+    // Wait for previous frame to finish
+    VK_CHECK(vkWaitForFences(device, 1, &getCurrentFrame().render_fence, VK_TRUE, 1000000000));
+
+    // Destroy frame's old uniform buffer(s) and descriptor set(s)
+    // TODO: change this to only make the buffers once and not re-allocate every frame
+    destroyBuffer(getCurrentFrame().scene_data_buffer);
+    getCurrentFrame().frame_descriptors.clearPools(device);
+
+    // Acquire an image from the swap chain
+    uint32_t image_index;
+    VkResult result = vkAcquireNextImageKHR(device, swapchain, 1000000000,
+        getCurrentFrame().swapchain_semaphore,
+        VK_NULL_HANDLE, &image_index);
+
+    // Check if swapchain needs to be recreated
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+    {
+        resize_requested = true;
+        return;
+    }
+    else if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to acquire swap chain image!");
+
+    
+    // -- New Frame Setup -- 
+    // 
+    // Reset fence for current frame
+    VK_CHECK(vkResetFences(device, 1, &getCurrentFrame().render_fence));
+
+    // Reset command buffer
+    VK_CHECK(vkResetCommandBuffer(getCurrentFrame().main_command_buffer, 0));
+
+    // Set up command buffer
+    VkCommandBuffer cmd = getCurrentFrame().main_command_buffer;
+    VkCommandBufferBeginInfo cmd_begin_info = phVkDefaultCommandBufferBeginInfo();
+    cmd_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+
+    // Transition draw image to general layout for writing
+    vkutil::transition_image(cmd, draw_image.image,
+        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+    // Transition depth image to depth attachment
+    vkutil::transition_image(cmd, depth_image.image,
+        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+
+    // -- Draw Background --
+    drawBackground();
+
+
+    // -- Draw Mesh --
+    drawMesh();
+
+
+    // -- Copy Draws to Swapchain --
+    // Transition draw image to transfer layout
+    vkutil::transition_image(cmd, draw_image.image,
+        VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    // Transition swapchain image to transfer layout
+    vkutil::transition_image(cmd, swapchain_images[swapchain_image_index],
+        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    // Determine actual draw extents
+    VkExtent2D draw_extent = determineDrawExtent();
+
+    // Copy draw image into swapchain
+    vkutil::copy_image_to_image(cmd, draw_image.image,
+        swapchain_images[swapchain_image_index], draw_extent, swapchain_extent);
+
+
+    // -- GUI Draw --
+    // Transition swapchain image to appropriate layout for ImGui
+    vkutil::transition_image(cmd, swapchain_images[swapchain_image_index],
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    // Draw ImGui
+    drawImgui(cmd, swapchain_image_views[swapchain_image_index]);
+
+
+    // -- Present Layout --
+    // Transition swapchain image to present layout
+    vkutil::transition_image(cmd, swapchain_images[swapchain_image_index],
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+
+    // -- End Command Buffer --
+    VK_CHECK(vkEndCommandBuffer(cmd));
+
+
+    // -- Submit Command Buffer --
+    VkCommandBufferSubmitInfo cmd_info = phVkDefaultCommandBufferSubmitInfo;
+    cmd_info.commandBuffer = cmd;
+
+    VkSemaphoreSubmitInfo wait_info = phVkDefaultSemaphoreSubmitInfo();
+    wait_info.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR;
+    wait_info.semaphore = getCurrentFrame().swapchain_semaphore;
+    VkSemaphoreSubmitInfo signal_info = phVkDefaultSemaphoreSubmitInfo();
+    signal_info.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+    signal_info.semaphore = getCurrentFrame().render_semaphore;
+
+    VkSubmitInfo2 submit = phVkDefaultSubmitInfo2();
+    submit.waitSemaphoreInfoCount = wait_info == nullptr ? 0 : 1;
+    submit.pWaitSemaphoreInfos = wait_info;
+    submit.commandBufferInfoCount = 1;
+    submit.pCommandBufferInfos = cmd_info;
+    submit.signalSemaphoreInfoCount = signal_info == nullptr ? 0 : 1;
+    submit.pSignalSemaphoreInfos = signal_info;
+
+    // Submit command buffer to the queue
+    // Assign render fence
+    VK_CHECK(vkQueueSubmit2(graphics_queue, 1, &submit, getCurrentFrame().render_fence));
+
+
+    // -- Present Image --
+    VkPresentInfoKHR present_info = phVkDefaultPresentInfo();
+
+    present_info.pSwapchains = &swapchain;
+    present_info.swapchainCount = 1;
+
+    present_info.pWaitSemaphores = &getCurrentFrame().render_semaphore;
+    present_info.waitSemaphoreCount = 1;
+
+    present_info.pImageIndices = &swapchain_image_index;
+
+    VkResult present_result = vkQueuePresentKHR(graphics_queue, &present_info);
+
+
+    // -- Final Steps --
+    
+    // TODO: remove - this does nothing since the previous check has a 'return'?
+    //if (result == VK_ERROR_OUT_OF_DATE_KHR)
+    //{
+    //    resize_requested = true;
+    //    return;
+    //}
+    
+    frame_number++;
+}
+
+
+template <typename T>
+void phVkEngine<T>::renderImGui()
+{
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::NewFrame();
+
+    if (ImGui::Begin("Hellow World"))
+    {
+        ImGui::Text("Frame Number: ", frame_number);
+
+        ImGui::End();
+    }
+
+    // Internal - does not draw to a Vulkan image
+    ImGui::Render();
+}
+
+
+template <typename T>
+void phVkEngine<T>::drawBackground()
+{
+
+}
+
+
+template <typename T>
+void phVkEngine<T>::drawMesh()
+{
+
 }
 
 
@@ -580,6 +821,41 @@ void phVkEngine<T>::resizeSwapchain()
     SDL_GetWindowSize(window, &w, &h);
 
     createSwapchain(w, h);
+}
+
+
+template <typename T>
+VkExtent2D phVkEngine<T>::determineDrawExtent()
+{
+    // TODO: add checks for minImageExtent and maxImageExtent capabilities
+    // TODO: add render scaling
+
+    // TODO: move this to member data?
+    VkSurfaceCapabilitiesKHR capabilities;
+    VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &capabilities));
+
+    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) 
+    {
+        return capabilities.currentExtent;
+    }
+    else 
+    {
+        int width, height;
+        SDL_GetWindowSizeInPixels(window, &width, &height);
+
+        VkExtent2D actual_extent = 
+        {
+            static_cast<uint32_t>(width),
+            static_cast<uint32_t>(height)
+        };
+
+        actual_extent.width = std::clamp(actual_extent.width, 
+            capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+        actual_extent.height = std::clamp(actual_extent.height, 
+            capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+
+        return actual_extent;
+    }
 }
 
 
