@@ -584,51 +584,26 @@ void phVkEngine<T>::resizeSwapchain()
 
 
 template <typename T>
-void phVkEngine<T>::createBackgroundPipeline()
-{
-
-}
-
-
-template <typename T>
-void phVkEngine<T>::createMeshPipeline()
+void phVkEngine<T>::createBackgroundPipelines()
 {
     if (mesh_pipeline.device == 0)
-        mesh_pipeline = phVkPipeline(device, VULKAN_GRAPHICS_PIPELINE);
+        mesh_pipeline = phVkPipeline(device, VULKAN_GRAPHICS_PIPELINE, viewport, scissor);
 
     // Shader modules
     mesh_pipeline.loadVertexShader("../../../../shaders/colored_triangle_mesh.vert.spv");   // TODO: change
     mesh_pipeline.loadFragmentShader("../../../../shaders/colored_triangle_mesh.frag.spv"); // TODO: change
 
-    // Push constant ranges
-    // Initialize with default for graphics pipeline at some point
-    //mesh_pipeline.addPushConstantRange(/**/);
+}
 
-    // Descriptor set layouts
-    mesh_pipeline.addDescriptorSetLayout(single_image_descriptor_layout);
 
-    // Pipeline layout
-    // Will be built by createPipeline()
-    // mesh_pipeline.setLayoutFlags();
+template <typename T>
+void phVkEngine<T>::createMeshPipelines()
+{
+    if (mesh_pipeline.device == 0)
+        mesh_pipeline = phVkPipeline(device, VULKAN_COMPUTE_PIPELINE, viewport, scissor);
 
-    // Graphics configuration
-    //mesh_pipeline.setGraphicsShaders(triangle_vertex_shader, triangle_frag_shader);
-    mesh_pipeline.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    mesh_pipeline.setPolygonMode(VK_POLYGON_MODE_FILL);
-    mesh_pipeline.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-    mesh_pipeline.setMultiSamplingNone();
-
-    // Blending configuration
-    mesh_pipeline.disableBlending();
-
-    // Depth test configuration
-    // Note: Using reversed depth (near/far) where 1 is near and 0 is far
-    //	     This is a common optimization in Vulkan to avoid depth precision issues
-    mesh_pipeline.enableDepthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
-
-    // Connect the image format from draw image
-    mesh_pipeline.addColorAttachmentFormat(draw_image.format);
-    mesh_pipeline.setDepthFormat(depth_image.format);
+    // Shader modules
+    mesh_pipeline.loadComputeShader("../../../../shaders/sky.comp.spv");   // TODO: change
 
     // Build the pipeline
     mesh_pipeline.createPipeline();
@@ -639,7 +614,7 @@ void phVkEngine<T>::createMeshPipeline()
 
 
 template <typename T>
-void phVkEngine<T>::createMaterialPipeline()
+void phVkEngine<T>::createMaterialPipelines()
 {
 
 }

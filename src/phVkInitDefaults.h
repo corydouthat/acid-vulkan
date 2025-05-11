@@ -3,76 +3,108 @@
 
 #include <vulkan/vulkan.h>
 
-VkImageViewCreateInfo phvk_default_image_view_create_info
+VkImageViewCreateInfo phVkDefaultImageViewCreateInfo()
 {
-    .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    .pNext = nullptr;
+    VkImageViewCreateInfo temp = {};
 
-	.flags = 0;
-    .image = 0;
-    .viewType = VK_IMAGE_VIEW_TYPE_2D;
-    .format = 0;
-    .compoonents = 0;
-    .subresourceRange.baseMipLevel = 0;
-    .subresourceRange.levelCount = 1;
-    .subresourceRange.baseArrayLayer = 0;
-    .subresourceRange.layerCount = 1;
-    .subresourceRange.aspectMask = 0;
-};
+    temp.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    temp.pNext = nullptr;
 
-VkImageCreateInfo phvk_default_image_create_info
+    //temp.flags = 0;
+    //temp.image = 0;
+    temp.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    //temp.format = 0;
+    //temp.compoonents = 0;
+    temp.subresourceRange.baseMipLevel = 0;
+    temp.subresourceRange.levelCount = 1;
+    temp.subresourceRange.baseArrayLayer = 0;
+    temp.subresourceRange.layerCount = 1;
+    temp.subresourceRange.aspectMask = 0;
+
+	return temp;
+}
+
+VkImageCreateInfo phVkDefaultImageCreateInfo()
 {
-    .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    .pNext = nullptr;
+	VkImageCreateInfo temp = {};
 
-    .flags = 0;
+    temp.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    temp.pNext = nullptr;
 
-    .imageType = VK_IMAGE_TYPE_2D;
+    //temp.flags = 0;
 
-    .format = 0;
-    .extent = 0;
+    temp.imageType = VK_IMAGE_TYPE_2D;
 
-    .mipLevels = 1;
-    .arrayLayers = 1;
+    //temp.format = 0;
+    //temp.extent = 0;
 
-    .samples = VK_SAMPLE_COUNT_1_BIT;
+    temp.mipLevels = 1;
+    temp.arrayLayers = 1;
 
-    .tiling = VK_IMAGE_TILING_OPTIMAL;
-    .usage = 0;
+    temp.samples = VK_SAMPLE_COUNT_1_BIT;
 
-	.sharingMode = 0;
-	.queueFamilyIndexCount = 0;
-	.pQueueFamilyIndices = 0;
-	.initialLayout = 0;
-};
+    temp.tiling = VK_IMAGE_TILING_OPTIMAL;
+    //temp.usage = 0;
 
-VkCommandPoolCreateInfo phvk_default_command_pool_create_info
+	//temp.sharingMode = 0;
+	//temp.queueFamilyIndexCount = 0;
+	//temp.pQueueFamilyIndices = 0;
+	//temp.initialLayout = 0;
+
+    return temp;
+}
+
+VkCommandPoolCreateInfo phVkDefaultCommandPoolCreateInfo()
 {
-    .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    .pNext = nullptr;
+	VkCommandPoolCreateInfo temp = {};
 
-    .flags = 0;
-    .queueFamilyIndex = 0; 
-};
+	temp.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	temp.pNext = nullptr;
+	//temp.flags = 0;
+	temp.queueFamilyIndex = 0;
 
-VkCommandBufferAllocateInfo phvk_default_command_buffer_allocate_info
+	return temp;
+}
+
+VkCommandBufferAllocateInfo phVkDefaultCommandBufferAllocateInfo()
 {
-    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    .pNext = nullptr;
+	VkCommandBufferAllocateInfo temp = {};
 
-    .commandPool = 0;
-    .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    .commandBufferCount = 0;
-};
+	temp.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	temp.pNext = nullptr;
+	//temp.commandPool = 0;
+	temp.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	temp.commandBufferCount = 0;
 
-VkPipelineShaderStageCreateInfo phvk_default_pipeline_shader_stage_create_info
+	return temp;
+}
+
+VkPipelineShaderStageCreateInfo phvkDefaultPipelineShader()
 {
-	.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	.pNext = nullptr;
+	VkPipelineShaderStageCreateInfo temp = {};
 
-	.flags = 0;
-	.stage = VK_SHADER_STAGE_ALL;
-	.module = 0;
-	.pName = nullptr;
-	.pSpecializationInfo = nullptr;
-};
+	temp.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	temp.pNext = nullptr;
+	//temp.flags = 0;
+	temp.stage = VK_SHADER_STAGE_ALL;
+	temp.module = 0;
+	temp.pName = nullptr;
+	temp.pSpecializationInfo = nullptr;
+	
+	return temp;
+}
+
+VkPipelineShaderStageCreateInfo phvkDefaultShaderStageCreateInfo()
+{
+	VkPipelineShaderStageCreateInfo temp = {};
+
+    temp.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    temp.pNext = nullptr;
+    //temp.flags;
+    //temp.stage;
+    //temp.module;
+    //temp.pName;
+    //temp.pSpecializationInfo;
+
+    return temp;
+}
