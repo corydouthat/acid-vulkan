@@ -77,6 +77,9 @@ private:
     VkDescriptorSetLayout draw_image_descriptor_layout;
     VkDescriptorSetLayout single_image_descriptor_layout;
 
+    // Push Constants
+    Vec4<T>[4] compute_push_constants;
+
     // Pipelines
 	phVkPipeline background_pipeline;
     phVkPipeline mesh_pipeline;
@@ -309,6 +312,12 @@ void phVkEngine<T>::draw()
     drawBackground();
 
 
+    // -- Transition Image --
+    // Transition for graphics drawing layout
+    vkutil::transition_image(cmd, draw_image.image, VK_IMAGE_LAYOUT_GENERAL,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+
     // -- Draw Mesh --
     drawMesh();
 
@@ -421,14 +430,67 @@ void phVkEngine<T>::renderImGui()
 template <typename T>
 void phVkEngine<T>::drawBackground()
 {
+    // TODO: temporary
+    compute_push_constants[0] = Vec4<T>(1, 0, 0, 0);
+    compute_push_constants[1] = Vec4<T>(0, 1, 0, 0);
+    compute_push_constants[2] = Vec4<T>(0, 0, 1, 0);
+    compute_push_constants[3] = Vec4<T>(0, 0, 0, 1);
 
+    // -- Bind Pipeline --
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, background_pipeline.pipeline);
+
+    // -- Bind Descriptor Sets --
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, background_pipeline.layout,
+        0, 1, &draw_image_descriptors, 0, nullptr);
+
+    // -- Push Constants --
+    vkCmdPushConstants(cmd, background_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+        sizeof(ComputePushConstants), &compute_push_constants);
+
+    // -- Dispatch --
+    // 16x16 workgroup
+    // TODO: confirm draw_image.extent - vkguide.dev uses window_extent
+    vkCmdDispatch(cmd, std::ceil(draw_image.extent.width / 16.0),
+        std::ceil(draw_image.extent.height / 16.0), 1);
 }
 
 
 template <typename T>
 void phVkEngine<T>::drawMesh()
 {
+    // -- Bind Pipeline --
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline.pipeline);
 
+    // -- Bind Descriptor Sets --
+    // TODO
+
+    // -- Push Constants --
+    // TODO
+
+    // -- Rendering Info / Image Attachments --
+    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(draw_image.view,
+        nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(depth_image.view,
+        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    VkRenderingInfo render_info = vkinit::rendering_info(window_extent,
+        &colorAttachment, &depthAttachment);
+
+    // -- Start Timer --
+    auto start = std::chrono::system_clock::now();
+
+    // -- Begin Rendering --
+    vkCmdBeginRendering(cmd, &render_info);
+
+    // -- Draw --
+    // TODO: (see drawGeometry)
+
+    // -- Stop Timer --
+    auto end = std::chrono::system_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    stats.mesh_draw_time = elapsed.count() / 1000.f;    // TODO: adapt for my engine
+
+    // -- End Rendering --
+    vkCmdEndRendering(cmd);
 }
 
 
@@ -869,6 +931,11 @@ void phVkEngine<T>::createBackgroundPipelines()
     mesh_pipeline.loadVertexShader("../../../../shaders/colored_triangle_mesh.vert.spv");   // TODO: change
     mesh_pipeline.loadFragmentShader("../../../../shaders/colored_triangle_mesh.frag.spv"); // TODO: change
 
+
+
+    // TODO!!
+
+
 }
 
 
@@ -881,6 +948,12 @@ void phVkEngine<T>::createMeshPipelines()
     // Shader modules
     mesh_pipeline.loadComputeShader("../../../../shaders/sky.comp.spv");   // TODO: change
 
+
+
+    // TODO!!
+
+
+
     // Build the pipeline
     mesh_pipeline.createPipeline();
 
@@ -892,6 +965,6 @@ void phVkEngine<T>::createMeshPipelines()
 template <typename T>
 void phVkEngine<T>::createMaterialPipelines()
 {
-
+    // TODO
 }
 
