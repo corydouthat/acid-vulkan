@@ -267,8 +267,12 @@ void phVkEngine<T>::draw()
 
     // Destroy frame's old uniform buffer(s) and descriptor set(s)
     // TODO: change this to only make the buffers once and not re-allocate every frame
+    // Is this because there are separate descriptor sets allocated from the pool for each mesh object every frame?
     destroyBuffer(getCurrentFrame().scene_data_buffer);
     getCurrentFrame().frame_descriptors.clearPools(device);
+
+    // TODO: or can we re-allocate the buffers / pools here (currently in drawGeometry)
+    // Also descriptor set?
 
     // Acquire an image from the swap chain
     uint32_t image_index;
