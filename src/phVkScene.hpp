@@ -35,12 +35,16 @@ public:
 
     // -- Functions --
     bool load(std::string path);
+    void processNode(aiNode* node, const aiScene* scene, Mat4<T> global_transform = Mat4<T>(), 
+        unsigned int meshes_offset = 0, unsigned int material_offset = 0);
+    void processMesh(const aiMesh* mesh, const aiScene* scene, phVkMesh<T>* new_mesh)
 };
 
 
 template <typename T>
 void phVkScene<T>::load(std::string path)
 {
+    // Track index offsets to allow mutliple files to be loaded to a single scene
     unsigned int meshes_offset = meshes.getCount();
     unsigned int materials_offset materials.getCount();
 
@@ -66,101 +70,121 @@ void phVkScene<T>::load(std::string path)
     // Note: index may not match Assimp index if multiple files have been loaded into the scene
     for (unsigned int i = 0; i < scene->mNumMeshes; i++)
     {
-        processMesh(scene->mMesh[i], scene);
+        int mesh = meshes.push(phVkMesh<T>{});
+        processMesh(scene->mMesh[i], scene, &meshes[mesh]);
     }
 
     // Load materials
     // Note: index may not match Assimp index if multiple files have been loaded into the scene
     for (unsigned int i = 0; i < scene->mMaterials; i++)
     {
-        processMaterial(scene->mMaterial[i], scene);
+        int mat = materials.push(phVkMaterial<T>());
+        processMaterial(scene->mMaterial[i], scene, &materials[mat]);
     }
 
-    return processNode(scene->mRootNode, scene);
+    return processNode(scene->mRootNode, scene, Mat4<T>(), meshes_offset, material_offset);
 }
 
 
+// Note on global_transform:
+// Keeps track of transformation as the node tree is traversed
+// Used to expand relative transformations all into global coordinates
 template <typename T>
-void phVkScene<T>::processNode(aiNode* node, const aiScene* scene)
+void phVkScene<T>::processNode(aiNode* node, const aiScene* scene, Mat4<T> global_transform, 
+    unsigned int meshes_offset, unsigned int material_offset)
 {
     // Every node becomes a model
     // Can have multiple meshes
+    // But, there is only a single transform per node
 
     // Check valid node / meshes
     if (node && node->numMeshes > 0)
-        int model = models.push(phVkModel<T>());
+        int model = models.push(phVkModel<T>{});
     else
         return;
 
-    // Check push returned a valid index
-    if (model < 0)
-        return;
+    // Get node name
+    models[model].name = node->mName;
+
+    // Get node transformation matrix
+    global_transform = global_transform * Mat4<T>(node->mTransformation);
+    models[model].transform = global_transform;
 
     // Process all meshes in the current node
     for (unsigned int i = 0; i < node->mNumMeshes; i++)
     {
-        // TODO: load transformation
-        // TODO: load name, etc
-        // TODO: index needs to be offset if multiple files have been loaded
-        models[model].meshes.push(node)
-        //aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-        //int m = meshes.push(phVkMesh<T>());
-        //processMesh(mesh, scene, meshes.get(m));
+        // Add mesh set
+        int set = models[model].sets.push(phVkMeshSet<T>());
 
-        // TODO: materials
-        // int mt =...
+        // Register mesh instance (index)
+        models[model].sets[set].mesh_i = meshes_offset + node->mMesh[i];
 
+        // Register material instances (indexes)
+        // Note: it appears that Assimp assigns materials at the mesh level, not the mesh instance
+        models[model].sets[set].mat_i = materials_offset + scene->mMeshes[node->mMesh[i]]->mMaterialIndex;
     }
 
     // Process all child nodes recursively
     for (unsigned int i = 0; i < node->mNumChildren; i++)
     {
-        processNode(node->mChildren[i], scene);
+        processNode(node->mChildren[i], scene, global_transform, meshes_offset, material_offset);
     }
 }
 
 
-// TODO: don't return copy of mesh, instead pass a pointer
-Mesh processMesh(aiMesh* mesh, const aiScene* scene)
+template <typename T>
+void phVkScene<T>::processMesh(const aiMesh* mesh, const aiScene* scene, phVkMesh<T>* new_mesh)
 {
-    Mesh result;
-
     // Process vertices
-    for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
-        Vertex vertex{};
+    for (unsigned int i = 0; i < mesh->mNumVertices; i++) 
+    {
+        phVkVertex<T> vertex{};
 
         // Position
-        vertex.pos.x = mesh->mVertices[i].x;
-        vertex.pos.y = mesh->mVertices[i].y;
-        vertex.pos.z = mesh->mVertices[i].z;
+        vertex.p.x = mesh->mVertices[i].x;
+        vertex.p.y = mesh->mVertices[i].y;
+        vertex.p.z = mesh->mVertices[i].z;
 
         // Normal
-        if (mesh->HasNormals()) {
-            vertex.normal.x = mesh->mNormals[i].x;
-            vertex.normal.y = mesh->mNormals[i].y;
-            vertex.normal.z = mesh->mNormals[i].z;
+        if (mesh->HasNormals()) 
+        {
+            vertex.n.x = mesh->mNormals[i].x;
+            vertex.n.y = mesh->mNormals[i].y;
+            vertex.n.z = mesh->mNormals[i].z;
         }
 
         // Texture coordinates
-        if (mesh->mTextureCoords[0]) {
-            vertex.texCoord.x = mesh->mTextureCoords[0][i].x;
-            vertex.texCoord.y = mesh->mTextureCoords[0][i].y;
+        if (mesh->hasTextureCoords())
+        {
+            // TODO: add support for AI_MAX_NUMBER_OF_TEXTURECOORDS != 2
+            vertex.uv.x = mesh->mTextureCoords[0];
+            vertex.uv.y = mesh->mTextureCoords[1];
         }
-        else {
-            vertex.texCoord = glm::vec2(0.0f, 0.0f);
+        else 
+        {
+            vertex.uv = glm::vec2(0.0f, 0.0f);
         }
 
-        result.vertices.push_back(vertex);
+        new_mesh.v.push(vertex);
     }
 
     // Process indices
-    for (unsigned int i = 0; i < mesh->mNumFaces; i++) {
+    for (unsigned int i = 0; i < mesh->mNumFaces; i++) 
+    {
         aiFace face = mesh->mFaces[i];
-        for (unsigned int j = 0; j < face.mNumIndices; j++) {
-            result.indices.push_back(face.mIndices[j]);
+
+        if (face.numIndices == 3)
+        {
+            for (unsigned int j = 0; j < face.mNumIndices; j++)
+            {
+                new_mesh->i.push(face.mIndices[j]);
+            }
+        }
+        else
+        {
+            // TODO: implement non-triangular faces
+            throw std::runtime_error("Failed to load model: " + std::string(importer.GetErrorString()));
         }
     }
-
-    return result;
 }
-};
+

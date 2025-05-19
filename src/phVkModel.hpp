@@ -55,16 +55,15 @@ struct phVkMeshSet
 	Mat4<T> transform;		// Local mesh transformation
 };
 
+
 // MODEL
 template <typename T = float>
-class phVkModel
+struct phVkModel
 {
-public:
-	// -- Data --
 	std::string name;		// Human friendly name (optional)
 	std::string file_path;	// Original file path
 
-	ArrayList<phVkMeshSet> sets;
+	ArrayList<phVkMeshSet> sets;	// Mesh sets
 };
 
 
