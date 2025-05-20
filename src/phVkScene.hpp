@@ -71,15 +71,15 @@ void phVkScene<T>::load(std::string path)
     for (unsigned int i = 0; i < scene->mNumMeshes; i++)
     {
         int mesh = meshes.push(phVkMesh<T>{});
-        processMesh(scene->mMesh[i], scene, &meshes[mesh]);
+        meshes[mesh].processMesh(scene->mMesh[i], scene);
     }
 
     // Load materials
     // Note: index may not match Assimp index if multiple files have been loaded into the scene
-    for (unsigned int i = 0; i < scene->mMaterials; i++)
+    for (unsigned int i = 0; i < scene->mNumMaterials; i++)
     {
         int mat = materials.push(phVkMaterial<T>());
-        processMaterial(scene->mMaterial[i], scene, &materials[mat]);
+        materials[mat].processMaterial(scene->mMaterial[i], scene);
     }
 
     return processNode(scene->mRootNode, scene, Mat4<T>(), meshes_offset, material_offset);
@@ -131,60 +131,4 @@ void phVkScene<T>::processNode(aiNode* node, const aiScene* scene, Mat4<T> globa
     }
 }
 
-
-template <typename T>
-void phVkScene<T>::processMesh(const aiMesh* mesh, const aiScene* scene, phVkMesh<T>* new_mesh)
-{
-    // Process vertices
-    for (unsigned int i = 0; i < mesh->mNumVertices; i++) 
-    {
-        phVkVertex<T> vertex{};
-
-        // Position
-        vertex.p.x = mesh->mVertices[i].x;
-        vertex.p.y = mesh->mVertices[i].y;
-        vertex.p.z = mesh->mVertices[i].z;
-
-        // Normal
-        if (mesh->HasNormals()) 
-        {
-            vertex.n.x = mesh->mNormals[i].x;
-            vertex.n.y = mesh->mNormals[i].y;
-            vertex.n.z = mesh->mNormals[i].z;
-        }
-
-        // Texture coordinates
-        if (mesh->hasTextureCoords())
-        {
-            // TODO: add support for AI_MAX_NUMBER_OF_TEXTURECOORDS != 2
-            vertex.uv.x = mesh->mTextureCoords[0];
-            vertex.uv.y = mesh->mTextureCoords[1];
-        }
-        else 
-        {
-            vertex.uv = glm::vec2(0.0f, 0.0f);
-        }
-
-        new_mesh.v.push(vertex);
-    }
-
-    // Process indices
-    for (unsigned int i = 0; i < mesh->mNumFaces; i++) 
-    {
-        aiFace face = mesh->mFaces[i];
-
-        if (face.numIndices == 3)
-        {
-            for (unsigned int j = 0; j < face.mNumIndices; j++)
-            {
-                new_mesh->i.push(face.mIndices[j]);
-            }
-        }
-        else
-        {
-            // TODO: implement non-triangular faces
-            throw std::runtime_error("Failed to load model: " + std::string(importer.GetErrorString()));
-        }
-    }
-}
 
