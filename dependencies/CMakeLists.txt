@@ -9,9 +9,9 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # Vulkan
 find_package(Vulkan REQUIRED)
 
-# Add fastgltf
-add_subdirectory(fastgltf fastgltf)
-target_link_libraries(dependencies INTERFACE fastgltf)
+# Add assimp
+add_subdirectory(assimp assimp)
+target_link_libraries(dependencies INTERFACE assimp)
 
 # Add fmt
 add_subdirectory(fmt fmt)

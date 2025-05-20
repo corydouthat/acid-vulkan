@@ -65,6 +65,14 @@ struct phVkFrameData
 };
 
 
+struct AllocatedBuffer
+{
+    VkBuffer buffer;
+    VmaAllocation allocation;
+    VmaAllocationInfo info;
+};
+
+
 //// Queue for deleting objects in FIFO order
 //struct phVkDeleteQueue
 //{

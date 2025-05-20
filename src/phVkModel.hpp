@@ -18,12 +18,25 @@
 #include "vec.hpp"
 #include "mat.hpp"
 
+#include "phVkEngine.hpp"
+#include "phVkTypes.h"
 #include "phVkMaterial.hpp"
+
+
+template <typename T>
+class phVkEngine;
 
 // VERTEX
 template <typename T = float>
 struct phVkVertex
 {
+    // TODO: InterleavE uv's to better match shader alignment on GPU, like this:
+    //Vec3f position;
+    //float uv_x;
+    //Vec3f normal;
+    //float uv_y;
+    //Vec4f color;
+
 	Vec3<T> p;		// Position
 	Vec3<T> n;		// Normal vector
 	Vec2<T> uv;		// Texture coordinate
@@ -32,15 +45,27 @@ struct phVkVertex
 
 // MESH
 template <typename T = float>
-struct phVkMesh
+class phVkMesh
 {
+public:
 	std::string name;	// Human friendly name (optional)
 	bool ccw = true;	// Counter-clockwise order / right-hand rule
 
-	ArrayList<phVkVertex<T>> v;	// Vertices
-	ArrayList<unsigned int> i;	// Vertex indices (triangles)
+	ArrayList<phVkVertex<T>> vertices;	// Vertices
+	ArrayList<unsigned int> indices;	// Vertex indices (triangles)
 
-    void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene);
+    // Vulkan buffer data
+    const phVkEngine<T>* engine;
+    AllocatedBuffer index_buffer;
+    AllocatedBuffer vertex_buffer;
+    VkDeviceAddress vertex_buffer_address;
+
+    // Functions
+    void processMesh(const aiMesh* mesh, const aiScene* scene);
+    void initVulkan(const phVkEngine<T>* engine);
+    void vulkanCleanup();
+
+    ~phVkMesh() { vulkanCleanup(); }
 };
 
 
@@ -50,7 +75,6 @@ struct phVkMeshSet
 {
 	unsigned int mesh_i;	// Mesh index
 	unsigned int mat_i;		// Material index
-	Mat4<T> transform;		// Local mesh transformation
 };
 
 
@@ -98,7 +122,7 @@ void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene)
             vertex.uv = glm::vec2(0.0f, 0.0f);
         }
 
-        v.push(vertex);
+        vertices.push(vertex);
     }
 
     // Process indices
@@ -110,7 +134,7 @@ void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene)
         {
             for (unsigned int j = 0; j < face.mNumIndices; j++)
             {
-                i.push(face.mIndices[j]);
+                indices.push(face.mIndices[j]);
             }
         }
         else
@@ -119,4 +143,75 @@ void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene)
             throw std::runtime_error("Failed to load model: " + std::string(importer.GetErrorString()));
         }
     }
+}
+
+template <typename T>
+void phVkMesh<T>::initVulkan(const phVkEngine<T>* engine)
+{
+    unsigned int vertex_buf_size = vertices.size() * sizeof(phVkVertex<T>);
+    unsigned int index_buf_size = indices.size() * sizeof(uint32_t);
+
+    this->engine = engine;
+
+    // Create vertex buffer
+    // SSBO | memory copy
+    vertex_buffer = engine->createBuffer(vertex_buf_size,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+
+    // Find the adress of the vertex buffer
+    VkBufferDeviceAddressInfo device_addr_info{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+        .buffer = vertex_buffer.buffer };
+    vertex_buffer_address = vkGetBufferDeviceAddress(device, &device_addr_info);
+
+    // Create index buffer
+    // Index draws | memory copy
+    index_buffer = engine->createBuffer(index_buf_size,
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+
+
+    // -- Copy Data to GPU --
+
+    // Set up a staging buffer
+    AllocatedBuffer staging = engine->createBuffer(vertex_buf_size + index_buf_size,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+
+    void* data = staging.allocation->GetMappedData();
+
+    // Copy vertex buffer to staging
+    memcpy(data, vertices.getData(), vertex_buf_size);
+    // Copy index buffer staging
+    memcpy((char*)data + vertex_buf_size, indices.getData(), index_buf_size);
+
+    // Submit commands to copy from staging to GPU buffer
+    immediateSubmit([&](VkCommandBuffer cmd)
+        {
+            VkBufferCopy vertex_copy{ 0 };
+            vertex_copy.dstOffset = 0;
+            vertex_copy.srcOffset = 0;
+            vertex_copy.size = vertex_buf_size;
+
+            vkCmdCopyBuffer(cmd, staging.buffer, vertex_buffer.buffer, 1, &vertex_copy);
+
+            VkBufferCopy index_copy{ 0 };
+            index_copy.dstOffset = 0;
+            index_copy.srcOffset = vertex_buf_size;
+            index_copy.size = index_buf_size;
+
+            vkCmdCopyBuffer(cmd, staging.buffer, index_buffer.buffer, 1, &index_copy);
+        });
+
+    // Destroy temporary staging buffer
+    engine.destroyBuffer(staging);
+}
+
+
+template <typename T>
+void phVkMesh<T>::vulkanCleanup()
+{
+    engine->destroyBuffer(index_buffer);
+    engine->destroyBuffer(vertex_buffer);
 }

@@ -26,6 +26,8 @@
 #include "phVkPipelines.hpp"
 #include "phVkImages.hpp"
 
+#include "phVkScene.hpp"
+
 
 // TODO: singleton?
 template <typename T>
@@ -43,6 +45,9 @@ private:
 
     // SDL / Window
     SDL_Window* window = nullptr;
+
+    // Scene
+    ArrayList<phVkScene<T>> scenes;
 
     // Vulkan
 	VkInstance instance;                // Vulkan instance
@@ -94,12 +99,18 @@ public:
     // -- Init Functions --
     bool init(uint32_t width, uint32_t height, std::string title);
     bool initGUI();
+    bool loadScene(std::string file_path);
 
     // -- Get Functions --
     phVkFrameData& getCurrentFrame() { return frames[frame_number % FRAME_BUFFER_COUNT]; };
 
     // -- Run Functions --
     void run();
+
+    // -- Buffer Functions --
+    AllocatedBuffer createBuffer(size_t alloc_size,
+        VkBufferUsageFlags usage, VmaMemoryUsage memory_usage);
+    void destroyBuffer(const AllocatedBuffer& buffer);
 
     // -- Cleanup --
     void cleanup();
@@ -153,6 +164,17 @@ bool phVkEngine<T>::init(uint32_t width, uint32_t height, std::string title)
 
 
 template <typename T>
+bool phVkEngine<T>::loadScene(std::string file_path)
+{
+    int scene = scenes.push(phVkScene<T>());
+
+    scenes[scene].load(file_path);
+
+    scenes[scene].initVulkan();
+}
+
+
+template <typename T>
 void phVkEngine<T>::run()
 {
     SDL_Event sdl_event;
@@ -192,6 +214,35 @@ void phVkEngine<T>::run()
     // -- Draw --
     draw();
 
+}
+
+
+template <typename T>
+AllocatedBuffer phVkEngine<T>::createBuffer(size_t alloc_size, VkBufferUsageFlags usage, VmaMemoryUsage memory_usage)
+{
+    VkBufferCreateInfo buffer_info = { .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    buffer_info.pNext = nullptr;
+    buffer_info.size = alloc_size;
+
+    buffer_info.usage = usage;
+
+    VmaAllocationCreateInfo vmaallocInfo = {};
+    vmaallocInfo.usage = memory_usage;
+    vmaallocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    AllocatedBuffer new_buffer;
+
+    // Allocate the buffer
+    VK_CHECK(vmaCreateBuffer(allocator, &buffer_info, &vmaallocInfo,
+        &new_buffer.buffer, &new_buffer.allocation, &new_buffer.info));
+
+    return new_buffer;
+}
+
+
+template <typename T>
+void phVkEngine<T>::destroyBuffer(const AllocatedBuffer& buffer)
+{
+    vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
 }
 
 

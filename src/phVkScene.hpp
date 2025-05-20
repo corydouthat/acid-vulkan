@@ -34,7 +34,7 @@ public:
 	ArrayList<phVkModel<T>> models;
 
     // -- Functions --
-    bool load(std::string path);
+    void load(std::string path);
     void processNode(aiNode* node, const aiScene* scene, Mat4<T> global_transform = Mat4<T>(), 
         unsigned int meshes_offset = 0, unsigned int material_offset = 0);
     void processMesh(const aiMesh* mesh, const aiScene* scene, phVkMesh<T>* new_mesh)
