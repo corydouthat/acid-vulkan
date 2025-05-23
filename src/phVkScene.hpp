@@ -1,5 +1,5 @@
 // Acid Game Engine - Vulkan (Ver 1.3-1.4)
-// Main Engine Class
+// Scene class and setup functions
 
 #pragma once
 

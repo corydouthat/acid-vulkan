@@ -1,5 +1,5 @@
 // Acid Game Engine - Vulkan (Ver 1.3-1.4)
-// Main Engine Class
+// Material and texture classes
 
 #pragma once
 
@@ -25,7 +25,7 @@
 
 
 // Texture data structure
-struct phVkTexture 
+class phVkTexture 
 {
     unsigned char* data = nullptr;
 

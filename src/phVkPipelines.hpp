@@ -16,7 +16,7 @@
 #include "phVkTypes.h"
 #include "phVkInitDefaults.h"
 
-// TODO: Re-write this with inheritance for different pipelines
+// TODO: Re-write this with inheritance for different pipelines? But there are only three?
 
 enum class phVkPipelineType
 {

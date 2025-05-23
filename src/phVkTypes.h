@@ -73,6 +73,18 @@ struct AllocatedBuffer
 };
 
 
+template <typename T>
+struct GPUSceneData
+{
+    Mat4<T> view;
+    Mat4<T> proj;
+    Mat4<T> view_proj;
+    Vec4<T> ambient_color;
+    Vec4<T> sunlight_direction; // w for sun power
+    Vec4<T> sunlight_color;
+};
+
+
 //// Queue for deleting objects in FIFO order
 //struct phVkDeleteQueue
 //{

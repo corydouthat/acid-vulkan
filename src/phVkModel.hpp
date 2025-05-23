@@ -1,5 +1,5 @@
 // Acid Game Engine - Vulkan (Ver 1.3-1.4)
-// Main Engine Class
+// Model and Mesh structures
 
 #pragma once
 
@@ -84,6 +84,8 @@ struct phVkModel
 {
 	std::string name;		// Human friendly name (optional)
 	std::string file_path;	// Original file path
+
+    Mat4<T> transform;      // Object transform to global coordinates
 
 	ArrayList<phVkMeshSet> sets;	// Mesh sets
 };
@@ -183,7 +185,7 @@ void phVkMesh<T>::initVulkan(const phVkEngine<T>* engine)
 
     // Copy vertex buffer to staging
     memcpy(data, vertices.getData(), vertex_buf_size);
-    // Copy index buffer staging
+    // Copy index buffer to staging
     memcpy((char*)data + vertex_buf_size, indices.getData(), index_buf_size);
 
     // Submit commands to copy from staging to GPU buffer

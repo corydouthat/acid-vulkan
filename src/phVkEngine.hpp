@@ -23,10 +23,13 @@
 
 #include "phVkTypes.h"
 #include "phVkInitDefaults.h"
+#include "phVkDescriptors.hpp"
 #include "phVkPipelines.hpp"
 #include "phVkImages.hpp"
 
 #include "phVkScene.hpp"
+
+#include "phVkCamera.hpp"
 
 
 // TODO: singleton?
@@ -48,6 +51,7 @@ private:
 
     // Scene
     ArrayList<phVkScene<T>> scenes;
+    GPUSceneData scene_data;
 
     // Vulkan
 	VkInstance instance;                // Vulkan instance
@@ -85,12 +89,20 @@ private:
     // Push Constants
     Vec4<T>[4] compute_push_constants;
 
+    // Buffer
+    AllocatedBuffer gpu_scene_data_buffer;
+
     // Pipelines
 	phVkPipeline background_pipeline;
     phVkPipeline mesh_pipeline;
 
 
 public:
+    // PUBLIC DATA
+    ArrayList<phVkCamera<T>> cameras;
+    unsigned int active_camera = 0;
+
+
     // PUBLIC FUNCTIONS
 
     phVkEngine() { ; }
@@ -132,6 +144,7 @@ private:
     void initSyncObjects();
     void initDescriptors();
     void initPipelines();
+    void initBuffers();
 
     // -- Swapchain Functions --
     void createSwapchain(uint32_t width, uint32_t height);
@@ -158,6 +171,7 @@ bool phVkEngine<T>::init(uint32_t width, uint32_t height, std::string title)
     initSyncObjects();
     initDescriptors();
     initPipelines();
+    initBuffers();
 
     return true;
 }
@@ -250,6 +264,12 @@ template <typename T>
 void phVkEngine<T>::cleanup()
 {
 	// -- Destroy resources in reverse order of creation --
+
+    // Scene
+    scenes.clear(); // Rely on destructors to detroy buffers
+
+    // Buffers
+    destroyBuffer(scene_data_buffer);
 
     // Pipelines
 	mesh_pipeline.clearToDefaults();
@@ -361,6 +381,28 @@ void phVkEngine<T>::draw()
     // Transition depth image to depth attachment
     vkutil::transition_image(cmd, depth_image.image,
         VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+
+
+    // -- Set Viewport and Scissor
+    //
+    VkViewport viewport = {};
+    viewport.x = 0;
+    viewport.y = 0;
+    viewport.width = (float)window_extent.width;
+    viewport.height = (float)window_extent.height;
+    viewport.minDepth = 0.f;
+    viewport.maxDepth = 1.f;
+
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor = {};
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent.width = window_extent.width;
+    scissor.extent.height = window_extent.height;
+
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
 
 
     // -- Draw Background --
@@ -514,13 +556,33 @@ template <typename T>
 void phVkEngine<T>::drawMesh()
 {
     // -- Bind Pipeline --
+    // TODO: add support for unique material pipelines
+    // for now, using a single shared geometry pipeline
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline.pipeline);
 
-    // -- Bind Descriptor Sets --
-    // TODO
 
-    // -- Push Constants --
-    // TODO
+    // -- Scene Data --
+    // Allocate Descriptor set for scene data buffer
+    // TODO: don't reallocate every time?
+    VkDescriptorSet global_descriptor = getCurrentFrame().frame_descriptors.allocate(device,
+        gpu_scene_data_descriptor_layout);
+
+    // Write the local scene data to (CPU?) buffer
+    // TODO: why not just reference the pointer directly instead of making a new one?
+    GPUSceneData* scene_data_uniform = (GPUSceneData*)gpu_scene_data_buffer.allocation->GetMappedData();
+    *scene_data_uniform = scene_data;
+
+    // Write scene data to (GPU?) buffer
+    // Update scene data descriptor
+    DescriptorWriter writer;
+    writer.writeBuffer(0, gpu_scene_data_buffer.buffer, sizeof(GPUSceneData), 0,
+        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);         // Queues up the buffer
+    writer.updateSet(device, global_descriptor);    // Assigns the global_descriptor set pointer
+
+    // Bind scene data global descriptor (slot 0)
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline.layout, 0, 1,
+        &global_descriptor, 0, nullptr);
+
 
     // -- Rendering Info / Image Attachments --
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(draw_image.view,
@@ -530,14 +592,52 @@ void phVkEngine<T>::drawMesh()
     VkRenderingInfo render_info = vkinit::rendering_info(window_extent,
         &colorAttachment, &depthAttachment);
 
+
     // -- Start Timer --
     auto start = std::chrono::system_clock::now();
+
 
     // -- Begin Rendering --
     vkCmdBeginRendering(cmd, &render_info);
 
-    // -- Draw --
-    // TODO: (see drawGeometry)
+
+    // -- Draw: Loop Objects --
+    // TODO: add IsVisible check to avoid drawing objects that aren't in frame
+    // TODO: sort by mesh and material for efficiency
+    for (unsigned int s = 0; s < scenes.getCount(); s++)
+    {
+        for (unsigned int i = 0; i < scenes[s].models.getCount(); i++)
+        {
+            // Push constants - Model-specific
+            GPUDrawPushConstants push_constants;
+            push_constants.world_matrix = scenes[s].models.transform;
+
+            for (unsigned int j = 0; j < scenes[s].models[i].sets.getCount(); j++)
+            {
+                unsigned int mesh_i = scenes[s].models[i].sets[j].mesh_i;
+
+                // Push constants - Mesh-specific
+                push_constants.vertex_buffer_address = scenes[s].meshes[mesh_i].vertex_buffer_address;
+                // Push
+                vkCmdPushConstants(cmd, mesh_pipeline.layout,
+                    VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+
+                //// TODO TODO TODO
+                //// Bind per-object material set descriptor (slot 1)
+                //// TODO: need to actually create the materials
+                //vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline.layout, 1, 1,
+                //    &r.material->material_set, 0, nullptr);
+
+                // Bind index
+                vkCmdBindIndexBuffer(cmd, scenes[s].meshes[mesh_i].index_buffer.buffer, 
+                    0, VK_INDEX_TYPE_UINT32);
+
+                // Vulkan Draw
+                vkCmdDrawIndexed(cmd, scenes[s].meshes[mesh_i].vertices.count, 1, 0, 0, 0);
+            }
+        }
+    }
+
 
     // -- Stop Timer --
     auto end = std::chrono::system_clock::now();
@@ -876,6 +976,14 @@ void phVkEngine<T>::initPipelines()
     createMeshPipeline();
 
     createMaterialPipeline();
+}
+
+
+template<typename T>
+void phVkEngine<T>::initBuffers()
+{
+    AllocatedBuffer scene_data_buffer = createBuffer(sizeof(GPUSceneData),
+        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 }
 
 

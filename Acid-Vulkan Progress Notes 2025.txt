@@ -1,0 +1,28 @@
+scene_data doesn't exist right? Need to set that up.
+Create material descriptor sets and bind in drawMesh()
+finish draw function(s)
+Load descriptors - transform, etc?
+
+Later:
+GUI
+Connect physics transforms
+User input callbacks
+IsVisible check
+
+
+
+How to use descriptors:
+Define the actual data - anything from transform matrices or buffer addresses to image views, samplers, and layout
+Define the layout - vkDescriptorSetLayout?
+{ begin: material descriptor setup
+Allocate a descriptor set (locally? using DescriptorAllocatorGrowable)
+"Write" values to it (does not actually call any Vulkan functions?)
+updateSet to assign set address and write data to GPU? andvkUpdateDescriptorSets
+} end: material descriptor setup
+vkCmdBindDescriptorSets
+
+
+What is needed for material descriptors:
+data buffer handle (for texture data? or for color_factors + metal_rough_factors type data?) Requires 256 byte alignment?
+Image (texture?) write elements - view, sampler, layout
+
