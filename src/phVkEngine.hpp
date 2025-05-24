@@ -21,7 +21,7 @@
 #include "Mat.hpp"
 #include "array_list.hpp"
 
-#include "phVkTypes.h"
+#include "phVkTypes.hpp"
 #include "phVkInitDefaults.h"
 #include "phVkDescriptors.hpp"
 #include "phVkPipelines.hpp"

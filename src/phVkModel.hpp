@@ -19,7 +19,7 @@
 #include "mat.hpp"
 
 #include "phVkEngine.hpp"
-#include "phVkTypes.h"
+#include "phVkTypes.hpp"
 #include "phVkMaterial.hpp"
 
 

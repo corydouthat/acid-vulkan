@@ -14,11 +14,22 @@ find_package(Vulkan REQUIRED)
 
 project (acid-vulkan)
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
+
 if (NOT TARGET acid-vulkan)
 	add_library(acid-vulkan INTERFACE
-		#including files here will force Visual Studio to show library
+		# including files here will force Visual Studio to show library
+		"src/phVkTypes.hpp"		# Order is important - used in many places
+		"src/phVkConfig.hpp"	# Order is important
+		"src/phVkCamera.hpp"
 		"src/phVkDescriptors.hpp"
 		"src/phVkEngine.hpp"
+		"src/phVkImages.hpp"
+		"src/phVkMaterial.hpp"
+		"src/phVkModel.hpp"
+		"src/phVkPipelines.hpp"
+		"src/phVkScene.hpp"
 	)
 endif()
 

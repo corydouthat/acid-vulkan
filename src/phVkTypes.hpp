@@ -36,10 +36,24 @@
 #include <functional>
 
 #include <vulkan/vulkan.h>
+#include <vulkan/vk_enum_string_helper.h>
 
 #include <vk_mem_alloc.h>
 
-#include "phVkDescriptors.hpp"
+
+#define VK_CHECK(x)                                                     \
+    do                                                                  \
+    {                                                                   \
+        VkResult err = x;                                               \
+        if (err)                                                        \
+        {                                                               \
+            std::cout << "Detected Vulkan error: {}" << string_VkResult(err) << std::endl; \
+            abort();                                                    \
+        }                                                               \
+    } while (0)
+
+
+#include "phVkDescriptors.hpp" // Causes include loop
 
 struct phVkImage
 {
@@ -107,14 +121,3 @@ struct GPUSceneData
 //        fifo.clear();
 //    }
 //};
-
-#define VK_CHECK(x)                                                     \
-    do                                                                  \
-    {                                                                   \
-        VkResult err = x;                                               \
-        if (err)                                                        \
-        {                                                               \
-            std::cout << "Detected Vulkan error: {}" << string_VkResult(err)) << std::endl; \
-            abort();                                                    \
-        }                                                               \
-    } while (0)

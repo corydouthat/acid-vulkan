@@ -30,12 +30,14 @@
 
 #pragma once
 
-#include "phVkTypes.h"
-
 // TODO: replace vector with ArrayList and write replacement for deque and span
 #include <vector>
 #include <deque>
 #include <span>
+
+#include <vulkan/vulkan.h>
+
+#include "phVkTypes.hpp"
 
 
 struct phVkDescriptorLayoutBuilder

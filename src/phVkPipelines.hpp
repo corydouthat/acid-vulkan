@@ -13,7 +13,7 @@
 
 #include "array_list.hpp"
 
-#include "phVkTypes.h"
+#include "phVkTypes.hpp"
 #include "phVkInitDefaults.h"
 
 // TODO: Re-write this with inheritance for different pipelines? But there are only three?
