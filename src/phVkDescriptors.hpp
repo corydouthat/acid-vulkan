@@ -209,7 +209,7 @@ void phVkDescriptorAllocator::init(VkDevice device, uint32_t max_sets, std::span
 }
 
 
-void phvkDescriptorAllocator::clearPools(VkDevice device)
+void phVkDescriptorAllocator::clearPools(VkDevice device)
 { 
     for (auto p : ready_pools) 
     {

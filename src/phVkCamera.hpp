@@ -12,7 +12,7 @@
 // TODO: Switch to Quaternions to avoid Gimbal Lock?
 
 template <typename T = float>
-class Camera
+class phVkCamera
 {
 private:
 	Vec3<T> pos;				// Position of camera in world space
@@ -27,9 +27,9 @@ private:
 	bool cam_up_valid;
 	bool lookat_valid;
 public:
-	Camera();
-	Camera(Vec3<T> p, Vec3<T> t, Vec3<T> up = Vec3<T>(0, 1, 0));
-	~Camera();
+	phVkCamera();
+	phVkCamera(Vec3<T> p, Vec3<T> t, Vec3<T> up = Vec3<T>(0, 1, 0));
+	~phVkCamera();
 
 	void setPos(Vec3<T> p);
 	void setTarget(Vec3<T> t);
@@ -61,7 +61,7 @@ public:
 
 // Default Constructor
 template <typename T>
-Camera<T>::Camera()
+phVkCamera<T>::phVkCamera()
 {
 	pos = Vec3<T>(0, 0, 1);
 	target = Vec3<T>(0, 0, 0);
@@ -74,7 +74,7 @@ Camera<T>::Camera()
 // t = target
 // up = up vector (world)
 template <typename T>
-Camera<T>::Camera(Vec3<T> p, Vec3<T> t, Vec3<T> up)
+phVkCamera<T>::phVkCamera(Vec3<T> p, Vec3<T> t, Vec3<T> up)
 {
 	pos = p;
 	target = t;
@@ -84,27 +84,27 @@ Camera<T>::Camera(Vec3<T> p, Vec3<T> t, Vec3<T> up)
 
 // Destructor (does nothing)
 template <typename T>
-Camera<T>::~Camera()
+phVkCamera<T>::~phVkCamera()
 {
 	return;
 }
 
 template <typename T>
-void Camera<T>::setPos(Vec3<T> p)
+void phVkCamera<T>::setPos(Vec3<T> p)
 {
 	pos = p;
 	cam_dir_valid = cam_right_valid = cam_up_valid = lookat_valid = false;
 }
 
 template <typename T>
-void Camera<T>::setTarget(Vec3<T> t)
+void phVkCamera<T>::setTarget(Vec3<T> t)
 {
 	target = t;
 	cam_dir_valid = cam_right_valid = cam_up_valid = lookat_valid = false;
 }
 
 template <typename T>
-void Camera<T>::setUpVector(Vec3<T> up)
+void phVkCamera<T>::setUpVector(Vec3<T> up)
 {
 	up_world = up;
 	cam_dir_valid = cam_right_valid = cam_up_valid = lookat_valid = false;
@@ -112,7 +112,7 @@ void Camera<T>::setUpVector(Vec3<T> up)
 
 // Get/Generate Camera 'Direction' / z-axis Vector
 template <typename T>
-Vec3<T> Camera<T>::getCamDir()
+Vec3<T> phVkCamera<T>::getCamDir()
 {
 	if (!cam_dir_valid)
 	{
@@ -125,7 +125,7 @@ Vec3<T> Camera<T>::getCamDir()
 
 // Get/Generate Camera 'right' / x-axis Vector
 template <typename T>
-Vec3<T> Camera<T>::getCamRight()
+Vec3<T> phVkCamera<T>::getCamRight()
 {
 	if (!cam_right_valid)
 	{
@@ -143,7 +143,7 @@ Vec3<T> Camera<T>::getCamRight()
 
 // Get/Generate Camera 'up' / y-axis Vector
 template <typename T>
-Vec3<T> Camera<T>::getCamUp()
+Vec3<T> phVkCamera<T>::getCamUp()
 {
 	if (!cam_up_valid)
 	{
@@ -167,7 +167,7 @@ Vec3<T> Camera<T>::getCamUp()
 
 // Get/Generate Look-at Matrix
 template <typename T>
-Mat4<T> Camera<T>::getLookAt()
+Mat4<T> phVkCamera<T>::getLookAt()
 {
 	if (lookat_valid)
 	{
@@ -213,7 +213,7 @@ Mat4<T> Camera<T>::getLookAt()
 // Move entire camera in global coordinates
 // t = move vector
 template <typename T>
-void Camera<T>::moveGlobal(Vec3<T> t)
+void phVkCamera<T>::moveGlobal(Vec3<T> t)
 {
 	pos += t;
 	target += t;
@@ -224,7 +224,7 @@ void Camera<T>::moveGlobal(Vec3<T> t)
 // Move camera in global coordinates but don't affect target
 // t = move vector
 template <typename T>
-void Camera<T>::movePos(Vec3<T> t)
+void phVkCamera<T>::movePos(Vec3<T> t)
 {
 	pos += t;
 
@@ -234,7 +234,7 @@ void Camera<T>::movePos(Vec3<T> t)
 // Revolve camera around target vertically
 // angle = angle to revolve in radians
 template <typename T>
-void Camera<T>::revolveV(T angle)
+void phVkCamera<T>::revolveV(T angle)
 {
 	Mat3<T> rot_mat = Mat3<T>::rot(-angle, getCamRight());
 	Vec3<T> t_dir = rot_mat * getCamDir();
@@ -246,7 +246,7 @@ void Camera<T>::revolveV(T angle)
 // Revolve camera around target horizontally
 // angle = angle to revolve in radians
 template <typename T>
-void Camera<T>::revolveH(T angle)
+void phVkCamera<T>::revolveH(T angle)
 {
 	Mat3<T> rot_mat = Mat3<T>::rot(angle, getCamUp());
 	Vec3<T> t_dir = rot_mat * getCamDir();
@@ -258,7 +258,7 @@ void Camera<T>::revolveH(T angle)
 // 'Truck' camera - move left or right along local axis
 // x = distance to move
 template <typename T>
-void Camera<T>::truck(T x)
+void phVkCamera<T>::truck(T x)
 {
 	pos += getCamRight() * x;
 	target += getCamRight() * x;
@@ -269,7 +269,7 @@ void Camera<T>::truck(T x)
 // 'Pedestal' camera - move up or down along local axis
 // y = distance to move
 template <typename T>
-void Camera<T>::pedestal(T y)
+void phVkCamera<T>::pedestal(T y)
 {
 	pos += getCamUp() * y;
 	target += getCamUp() * y;
@@ -280,7 +280,7 @@ void Camera<T>::pedestal(T y)
 // 'Dolly' camera - move forward or back along local axis
 // z = distance to move
 template <typename T>
-void Camera<T>::dolly(T z)
+void phVkCamera<T>::dolly(T z)
 {
 	pos -= getCamDir() * z;
 	target -= getCamDir() * z;
@@ -291,7 +291,7 @@ void Camera<T>::dolly(T z)
 // 'Tilt' camera - rotate vertically around position
 // angle = angle to rotate in radians
 template <typename T>
-void Camera<T>::tilt(T angle)
+void phVkCamera<T>::tilt(T angle)
 {
 	Mat3<T> rot_mat = Mat3<T>::rot(angle, getCamRight());
 	Vec3<T> t_dir = rot_mat * -getCamDir();
@@ -303,7 +303,7 @@ void Camera<T>::tilt(T angle)
 // 'Pan' camera - rotate Horizontally around position
 // angle = angle to rotate in radians
 template <typename T>
-void Camera<T>::pan(T angle)
+void phVkCamera<T>::pan(T angle)
 {
 	Mat3<T> rot_mat = Mat3<T>::rot(-angle, getCamUp());
 	Vec3<T> t_dir = rot_mat * -getCamDir();

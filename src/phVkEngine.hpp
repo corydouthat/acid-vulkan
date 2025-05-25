@@ -9,6 +9,7 @@
 #include <vulkan/vulkan.h>
 
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_events.h>
 #include <SDL3/SDL_vulkan.h>
 
 #include <VkBootstrap.h> 
@@ -16,13 +17,18 @@
 #define VMA_IMPLEMENTATION  // Must include in exactly ONE cpp file
 #include <vk_mem_alloc.h>   // May be included elsewhere w/o VMA_IMPLEMENTATION
 
+#include <imgui.h>
+#include <imgui_impl_sdl3.h>
+#include <imgui_impl_vulkan.h>
+
 #include "Vec.hpp"
 #include "Quat.hpp"
 #include "Mat.hpp"
 #include "array_list.hpp"
 
 #include "phVkTypes.hpp"
-#include "phVkInitDefaults.h"
+#include "phVkConfig.hpp"
+#include "phVkInitDefaults.hpp"
 #include "phVkDescriptors.hpp"
 #include "phVkPipelines.hpp"
 #include "phVkImages.hpp"
@@ -51,7 +57,7 @@ private:
 
     // Scene
     ArrayList<phVkScene<T>> scenes;
-    GPUSceneData scene_data;
+    GPUSceneData<T> scene_data;
 
     // Vulkan
 	VkInstance instance;                // Vulkan instance
@@ -86,11 +92,8 @@ private:
     VkDescriptorSetLayout draw_image_descriptor_layout;
     VkDescriptorSetLayout single_image_descriptor_layout;
 
-    // Push Constants
-    Vec4<T>[4] compute_push_constants;
-
     // Buffer
-    AllocatedBuffer gpu_scene_data_buffer;
+    AllocatedBuffer scene_data_buffer;
 
     // Pipelines
 	phVkPipeline background_pipeline;
@@ -115,6 +118,11 @@ public:
 
     // -- Get Functions --
     phVkFrameData& getCurrentFrame() { return frames[frame_number % FRAME_BUFFER_COUNT]; };
+    VkExtent2D getWindowExtent();
+    VkExtent2D getSwapchainExtent();
+    VkExtent2D getActualExtent(bool clamp = true);
+    VkViewport getViewport();
+    VkRect2D getScissor();
 
     // -- Run Functions --
     void run();
@@ -133,8 +141,8 @@ private:
     // -- Run Functions --
     void draw();
     void renderImGui();
-    void drawBackground();
-    void drawMesh();
+    void drawBackground(VkCommandBuffer cmd);
+    void drawMesh(VkCommandBuffer cmd);
 
     // -- Init Functions --
     bool createWindow(uint32_t width, uint32_t height, std::string title);
@@ -150,7 +158,6 @@ private:
     void createSwapchain(uint32_t width, uint32_t height);
     void destroySwapchain();
 	void resizeSwapchain();
-    VkExtent2D determineDrawExtent();
 
 	// -- Pipeline Functions --
     void createBackgroundPipelines();
@@ -189,6 +196,16 @@ bool phVkEngine<T>::loadScene(std::string file_path)
 
 
 template <typename T>
+VkExtent2D phVkEngine<T>::getWindowExtent()
+{
+    VkExtent2D temp;
+    SDL_GetWindowSizeInPixels(window, &(int)temp.width, &(int)temp.height);
+
+    return temp;
+}
+
+
+template <typename T>
 void phVkEngine<T>::run()
 {
     SDL_Event sdl_event;
@@ -196,21 +213,23 @@ void phVkEngine<T>::run()
     // -- Handle SDL Events --
     while (SDL_PollEvent(&sdl_event) != 0)  // Until queue is empty
     {
-        // Quit
-        if (sdl_event.type == SDL_QUIT)
-            sdl_quit = true;
-
-        // Window minimize/restore
-        if (sdl_event.type == SDL_WINDOWEVENT)
+        switch (sdl_event.type)
         {
-            if (sdl_event.window.event == SDL_WINDOWEVENT_MINIMIZED)
-                stop_rendering = true;
-            if (sdl_event.window.event == SDL_WINDOWEVENT_RESTORED)
-                stop_rendering = false;
-        }
+        case SDL_EVENT_QUIT:
+            sdl_quit = true;
+            break;
+
+        case SDL_EVENT_WINDOW_MINIMIZED:
+            stop_rendering = true;
+            break;
+
+        case SDL_EVENT_WINDOW_RESTORED:
+            stop_rendering = false;
+            break;
 
         // Key/mouse callbacks
         // TODO
+        }
 
         // Send SDL event to imgui for handling
         ImGui_ImplSDL3_ProcessEvent(&sdl_event);
@@ -268,7 +287,7 @@ void phVkEngine<T>::cleanup()
     // Scene
     scenes.clear(); // Rely on destructors to detroy buffers
 
-    // Buffers
+    // Scene data buffer
     destroyBuffer(scene_data_buffer);
 
     // Pipelines
@@ -373,7 +392,7 @@ void phVkEngine<T>::draw()
     VkCommandBuffer cmd = getCurrentFrame().main_command_buffer;
     VkCommandBufferBeginInfo cmd_begin_info = phVkDefaultCommandBufferBeginInfo();
     cmd_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+    VK_CHECK(vkBeginCommandBuffer(cmd, &cmd_begin_info));
 
     // Transition draw image to general layout for writing
     vkutil::transition_image(cmd, draw_image.image,
@@ -383,30 +402,8 @@ void phVkEngine<T>::draw()
         VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
 
-
-    // -- Set Viewport and Scissor
-    //
-    VkViewport viewport = {};
-    viewport.x = 0;
-    viewport.y = 0;
-    viewport.width = (float)window_extent.width;
-    viewport.height = (float)window_extent.height;
-    viewport.minDepth = 0.f;
-    viewport.maxDepth = 1.f;
-
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-    VkRect2D scissor = {};
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    scissor.extent.width = window_extent.width;
-    scissor.extent.height = window_extent.height;
-
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
-
-
     // -- Draw Background --
-    drawBackground();
+    drawBackground(cmd);
 
 
     // -- Transition Image --
@@ -416,7 +413,7 @@ void phVkEngine<T>::draw()
 
 
     // -- Draw Mesh --
-    drawMesh();
+    drawMesh(cmd);
 
 
     // -- Copy Draws to Swapchain --
@@ -424,29 +421,28 @@ void phVkEngine<T>::draw()
     vkutil::transition_image(cmd, draw_image.image,
         VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     // Transition swapchain image to transfer layout
-    vkutil::transition_image(cmd, swapchain_images[swapchain_image_index],
+    vkutil::transition_image(cmd, swapchain_images[image_index],
         VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
     // Determine actual draw extents
-    VkExtent2D draw_extent = determineDrawExtent();
+    VkExtent2D swapchain_extent = getSwapchainExtent();
 
     // Copy draw image into swapchain
     vkutil::copy_image_to_image(cmd, draw_image.image,
-        swapchain_images[swapchain_image_index], draw_extent, swapchain_extent);
-
+        swapchain_images[image_index], draw_image.extent, swapchain_extent);
 
     // -- GUI Draw --
     // Transition swapchain image to appropriate layout for ImGui
-    vkutil::transition_image(cmd, swapchain_images[swapchain_image_index],
+    vkutil::transition_image(cmd, swapchain_images[image_index],
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
     // Draw ImGui
-    drawImgui(cmd, swapchain_image_views[swapchain_image_index]);
+    drawImgui(cmd, swapchain_image_views[image_index]);
 
 
     // -- Present Layout --
     // Transition swapchain image to present layout
-    vkutil::transition_image(cmd, swapchain_images[swapchain_image_index],
+    vkutil::transition_image(cmd, swapchain_images[image_index],
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
 
@@ -466,11 +462,11 @@ void phVkEngine<T>::draw()
     signal_info.semaphore = getCurrentFrame().render_semaphore;
 
     VkSubmitInfo2 submit = phVkDefaultSubmitInfo2();
-    submit.waitSemaphoreInfoCount = wait_info == nullptr ? 0 : 1;
+    submit.waitSemaphoreInfoCount = 1;
     submit.pWaitSemaphoreInfos = wait_info;
     submit.commandBufferInfoCount = 1;
     submit.pCommandBufferInfos = cmd_info;
-    submit.signalSemaphoreInfoCount = signal_info == nullptr ? 0 : 1;
+    submit.signalSemaphoreInfoCount = 1;
     submit.pSignalSemaphoreInfos = signal_info;
 
     // Submit command buffer to the queue
@@ -487,7 +483,7 @@ void phVkEngine<T>::draw()
     present_info.pWaitSemaphores = &getCurrentFrame().render_semaphore;
     present_info.waitSemaphoreCount = 1;
 
-    present_info.pImageIndices = &swapchain_image_index;
+    present_info.pImageIndices = &image_index;
 
     VkResult present_result = vkQueuePresentKHR(graphics_queue, &present_info);
 
@@ -509,7 +505,7 @@ template <typename T>
 void phVkEngine<T>::renderImGui()
 {
     ImGui_ImplVulkan_NewFrame();
-    ImGui_ImplSDL2_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
 
     if (ImGui::Begin("Hellow World"))
@@ -525,41 +521,51 @@ void phVkEngine<T>::renderImGui()
 
 
 template <typename T>
-void phVkEngine<T>::drawBackground()
+void phVkEngine<T>::drawBackground(VkCommandBuffer cmd)
 {
-    // TODO: temporary
-    compute_push_constants[0] = Vec4<T>(1, 0, 0, 0);
-    compute_push_constants[1] = Vec4<T>(0, 1, 0, 0);
-    compute_push_constants[2] = Vec4<T>(0, 0, 1, 0);
-    compute_push_constants[3] = Vec4<T>(0, 0, 0, 1);
+    //// TODO: temporary
+    //Vec4<T> compute_push_constants[4];
+    //compute_push_constants[0] = Vec4<T>(1, 0, 0, 0);
+    //compute_push_constants[1] = Vec4<T>(0, 1, 0, 0);
+    //compute_push_constants[2] = Vec4<T>(0, 0, 1, 0);
+    //compute_push_constants[3] = Vec4<T>(0, 0, 0, 1);
 
-    // -- Bind Pipeline --
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, background_pipeline.pipeline);
+    //// -- Bind Pipeline --
+    //vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, background_pipeline.pipeline);
 
-    // -- Bind Descriptor Sets --
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, background_pipeline.layout,
-        0, 1, &draw_image_descriptors, 0, nullptr);
+    //// -- Set Viewport and Scissor --
+    //// Set after each pipeline bind (with exceptions)
+    //vkCmdSetViewport(cmd, 0, 1, &getViewport());
+    //vkCmdSetScissor(cmd, 0, 1, &getScissor());
 
-    // -- Push Constants --
-    vkCmdPushConstants(cmd, background_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
-        sizeof(ComputePushConstants), &compute_push_constants);
+    //// -- Bind Descriptor Sets --
+    //vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, background_pipeline.layout,
+    //    0, 1, &draw_image_descriptors, 0, nullptr);
 
-    // -- Dispatch --
-    // 16x16 workgroup
-    // TODO: confirm draw_image.extent - vkguide.dev uses window_extent
-    vkCmdDispatch(cmd, std::ceil(draw_image.extent.width / 16.0),
-        std::ceil(draw_image.extent.height / 16.0), 1);
+    //// -- Push Constants --
+    //vkCmdPushConstants(cmd, background_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+    //    sizeof(compute_push_constants), &compute_push_constants);
+
+    //// -- Dispatch --
+    //// 16x16 workgroup
+    //// TODO: confirm draw_image.extent - vkguide.dev uses getWindowExtent()
+    //vkCmdDispatch(cmd, std::ceil(draw_image.extent.width / 16.0),
+    //    std::ceil(draw_image.extent.height / 16.0), 1);
 }
 
 
 template <typename T>
-void phVkEngine<T>::drawMesh()
+void phVkEngine<T>::drawMesh(VkCommandBuffer cmd)
 {
     // -- Bind Pipeline --
     // TODO: add support for unique material pipelines
     // for now, using a single shared geometry pipeline
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline.pipeline);
 
+    // -- Set Viewport and Scissor --
+    // Set after each pipeline bind (with exceptions)
+    vkCmdSetViewport(cmd, 0, 1, &getViewport());
+    vkCmdSetScissor(cmd, 0, 1, &getScissor());
 
     // -- Scene Data --
     // Allocate Descriptor set for scene data buffer
@@ -569,13 +575,13 @@ void phVkEngine<T>::drawMesh()
 
     // Write the local scene data to (CPU?) buffer
     // TODO: why not just reference the pointer directly instead of making a new one?
-    GPUSceneData* scene_data_uniform = (GPUSceneData*)gpu_scene_data_buffer.allocation->GetMappedData();
+    GPUSceneData<T>* scene_data_uniform = (GPUSceneData<T>*)scene_data_buffer.allocation->GetMappedData();
     *scene_data_uniform = scene_data;
 
     // Write scene data to (GPU?) buffer
     // Update scene data descriptor
-    DescriptorWriter writer;
-    writer.writeBuffer(0, gpu_scene_data_buffer.buffer, sizeof(GPUSceneData), 0,
+    phVkDescriptorWriter writer;
+    writer.writeBuffer(0, scene_data_buffer.buffer, sizeof(GPUSceneData<T>), 0,
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);         // Queues up the buffer
     writer.updateSet(device, global_descriptor);    // Assigns the global_descriptor set pointer
 
@@ -585,12 +591,14 @@ void phVkEngine<T>::drawMesh()
 
 
     // -- Rendering Info / Image Attachments --
-    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(draw_image.view,
-        nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(depth_image.view,
-        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-    VkRenderingInfo render_info = vkinit::rendering_info(window_extent,
-        &colorAttachment, &depthAttachment);
+    VkRenderingAttachmentInfo color_attachment = phVkDefaultColorAttachmentInfo();
+    color_attachment.imageView = draw_image.view;
+    VkRenderingAttachmentInfo depth_attachment = phVkDefaultDepthAttachmentInfo();
+    depth_attachment.imageView = depth_image.view;
+    VkRenderingInfo render_info = phVkDefaultRenderingInfo();
+    render_info.renderArea = VkRect2D{ VkOffset2D { 0, 0 }, getWindowExtent() };
+    render_info.pColorAttachments = &color_attachment;
+    render_info.pDepthAttachment = &depth_attachment;
 
 
     // -- Start Timer --
@@ -625,6 +633,8 @@ void phVkEngine<T>::drawMesh()
                 //// TODO TODO TODO
                 //// Bind per-object material set descriptor (slot 1)
                 //// TODO: need to actually create the materials
+                //// TODO: use single_image_descriptor_layout when allocating... 
+                //           the descriptor set to match pipeline config?
                 //vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline.layout, 1, 1,
                 //    &r.material->material_set, 0, nullptr);
 
@@ -642,7 +652,7 @@ void phVkEngine<T>::drawMesh()
     // -- Stop Timer --
     auto end = std::chrono::system_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-    stats.mesh_draw_time = elapsed.count() / 1000.f;    // TODO: adapt for my engine
+    //stats.mesh_draw_time = elapsed.count() / 1000.f;    // TODO: adapt for my engine
 
     // -- End Rendering --
     vkCmdEndRendering(cmd);
@@ -699,7 +709,7 @@ void phVkEngine<T>::initVulkan()
     // -- Init Device --
     // 
     // Surface
-    SDL_Vulkan_CreateSurface(window, instance, &surface);
+    SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface);
 
     // Vulkan 1.3 features
     VkPhysicalDeviceVulkan13Features features13{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
@@ -766,7 +776,7 @@ void phVkEngine<T>::initSwapchain()
     // Will only render to a portion that matches the window size
     VkExtent3D draw_extent =
     {
-        // TODO: Still crashes if resizing above these dimensions
+        // TODO: Still crashes if resizing above these dimensions?
         // TODO: Pull monitor dimensions rather than hard-coding
         2560,   // Width
 		1440,   // Height
@@ -785,9 +795,11 @@ void phVkEngine<T>::initSwapchain()
     draw_image_usages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     draw_image_usages |= VK_IMAGE_USAGE_STORAGE_BIT;
     draw_image_usages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-    VkImageCreateInfo img_info = vkinit::image_create_info(draw_image.format, 
-        draw_image_usages, draw_extent);
+    
+    VkImageCreateInfo img_info = phVkDefaultImageCreateInfo();
+    img_info.format = draw_image.format;
+    img_info.usage = draw_image_usages;
+    img_info.extent = draw_extent;
 
     // Allocate draw image from GPU local memory
     // Configure for GPU-only access and fastest memory
@@ -801,7 +813,7 @@ void phVkEngine<T>::initSwapchain()
 
     // Build an image-view for the draw image to use for rendering
     // vkguide.dev always pairs vkimages with "default" imageview
-    VkImageViewCreateInfo view_info = phvk_default_image_view_create_info;
+    VkImageViewCreateInfo view_info = phVkDefaultImageViewCreateInfo();
 	view_info.format = draw_image.format;
 	view_info.image = draw_image.image;
 	view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -818,7 +830,7 @@ void phVkEngine<T>::initSwapchain()
     VkImageUsageFlags depth_image_usages{};
     depth_image_usages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;  // Key to depth pass
 
-    VkImageCreateInfo dimg_info = phvk_default_image_create_info;
+    VkImageCreateInfo dimg_info = phVkDefaultImageCreateInfo();
 	dimg_info.format = depth_image.format;
 	dimg_info.extent = draw_extent;
 	dimg_info.usage = depth_image_usages;
@@ -828,7 +840,7 @@ void phVkEngine<T>::initSwapchain()
         &depth_image.allocation, nullptr);
 
     // Build an image-view for the draw image to use for rendering
-    VkImageViewCreateInfo dview_info = phvk_default_image_view_create_info;
+    VkImageViewCreateInfo dview_info = phVkDefaultImageViewCreateInfo();
     dview_info.format = depth_image.format;
     dview_info.image = depth_image.image;
     dview_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
@@ -844,7 +856,7 @@ void phVkEngine<T>::initCommands()
     //
     // Create a command pool for commands submitted to the graphics queue
     // Configure to allow for resetting of individual command buffers
-    VkCommandPoolCreateInfo command_pool_info = phvk_default_command_pool_create_info;
+    VkCommandPoolCreateInfo command_pool_info = phVkDefaultCommandPoolCreateInfo();
     command_pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     command_pool_info.queueFamilyIndex = graphics_queue_family;
 
@@ -853,7 +865,7 @@ void phVkEngine<T>::initCommands()
         VK_CHECK(vkCreateCommandPool(device, &command_pool_info, nullptr, &frames[i].command_pool));
 
         // Allocate the default command buffer for rendering
-        VkCommandBufferAllocateInfo cmd_alloc_info = phvk_default_command_buffer_allocate_info;
+        VkCommandBufferAllocateInfo cmd_alloc_info = phVkDefaultCommandBufferAllocateInfo();
         cmd_alloc_info.commandPool = frames[i].command_pool;
         cmd_alloc_info.commandBufferCount = 1;
 
@@ -866,7 +878,7 @@ void phVkEngine<T>::initCommands()
     VK_CHECK(vkCreateCommandPool(device, &command_pool_info, nullptr, &imm_command_pool));
 
     // Allocate the command buffer for immediate submits
-    VkCommandBufferAllocateInfo cmd_alloc_info = phvk_default_command_buffer_allocate_info;
+    VkCommandBufferAllocateInfo cmd_alloc_info = phVkDefaultCommandBufferAllocateInfo();
 	cmd_alloc_info.commandPool = imm_command_pool;
 	cmd_alloc_info.commandBufferCount = 1;
 
@@ -882,15 +894,17 @@ void phVkEngine<T>::initSyncObjects()
     // One fence to signal when the gpu has finished rendering the frame
     // Two semaphores to synchronize rendering with swapchain
 
-    VkFenceCreateInfo fence_create_info = {}
-		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-		.pNext = nullptr,
-        .flags = VK_FENCE_CREATE_SIGNALED_BIT;  // Start signaled to avoid blocking
+    VkFenceCreateInfo fence_create_info {
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = VK_FENCE_CREATE_SIGNALED_BIT  // Start signaled to avoid blocking
+    };
 
-    VkSemaphoreCreateInfo semaphore_create_info = {}
-		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-		.pNext = nullptr,
-		.flags = 0;
+    VkSemaphoreCreateInfo semaphore_create_info{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0
+    };
 
     for (int i = 0; i < FRAME_BUFFER_COUNT; i++) 
     {
@@ -908,6 +922,8 @@ void phVkEngine<T>::initSyncObjects()
 template<typename T>
 void phVkEngine<T>::initDescriptors()
 {
+    // TODO: potentially move these to where they are used?
+
     // Descriptor pool type counts
     std::vector<phVkDescriptorAllocator::PoolSizeRatio> sizes = {
 		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 },
@@ -971,18 +987,18 @@ void phVkEngine<T>::initDescriptors()
 template<typename T>
 void phVkEngine<T>::initPipelines()
 {
-    createBackgroundPipeline();
+    createBackgroundPipelines();
 
-    createMeshPipeline();
+    createMeshPipelines();
 
-    createMaterialPipeline();
+    createMaterialPipelines();
 }
 
 
 template<typename T>
 void phVkEngine<T>::initBuffers()
 {
-    AllocatedBuffer scene_data_buffer = createBuffer(sizeof(GPUSceneData),
+    AllocatedBuffer scene_data_buffer = createBuffer(sizeof(GPUSceneData<T>),
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 }
 
@@ -1005,7 +1021,7 @@ void phVkEngine<T>::createSwapchain(uint32_t width, uint32_t height)
         .build()
         .value();
 
-    swapchain_extent = vkb_swapchain.extent;
+    VkExtent2D swapchain_extent = vkb_swapchain.extent;
     swapchain = vkb_swapchain.swapchain;
     for (unsigned int i = 0; i < vkb_swapchain.get_images().value().size; i++)
     {
@@ -1050,33 +1066,40 @@ void phVkEngine<T>::resizeSwapchain()
 
 
 template <typename T>
-VkExtent2D phVkEngine<T>::determineDrawExtent()
+VkExtent2D phVkEngine<T>::getSwapchainExtent()
+{
+    return getActualExtent(false);
+}
+
+
+template <typename T>
+VkExtent2D phVkEngine<T>::getActualExtent(bool clamp)
 {
     // TODO: add checks for minImageExtent and maxImageExtent capabilities
     // TODO: add render scaling
 
     // TODO: move this to member data?
     VkSurfaceCapabilitiesKHR capabilities;
-    VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &capabilities));
+    VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &capabilities));
 
-    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) 
+    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
     {
         return capabilities.currentExtent;
     }
-    else 
+    else
     {
         int width, height;
         SDL_GetWindowSizeInPixels(window, &width, &height);
 
-        VkExtent2D actual_extent = 
+        VkExtent2D actual_extent =
         {
             static_cast<uint32_t>(width),
             static_cast<uint32_t>(height)
         };
 
-        actual_extent.width = std::clamp(actual_extent.width, 
+        actual_extent.width = std::clamp(actual_extent.width,
             capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-        actual_extent.height = std::clamp(actual_extent.height, 
+        actual_extent.height = std::clamp(actual_extent.height,
             capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
 
         return actual_extent;
@@ -1085,18 +1108,46 @@ VkExtent2D phVkEngine<T>::determineDrawExtent()
 
 
 template <typename T>
+VkViewport phVkEngine<T>::getViewport()
+{
+    VkViewport viewport = {};
+
+    viewport.x = 0;
+    viewport.y = 0;
+    viewport.width = (float)getWindowExtent().width;
+    viewport.height = (float)getWindowExtent().height;
+    viewport.minDepth = 0.f;
+    viewport.maxDepth = 1.f;
+
+    return viewport;
+}
+
+
+template <typename T>
+VkRect2D phVkEngine<T>::getScissor()
+{
+    VkRect2D scissor = {};
+
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent.width = getWindowExtent().width;
+    scissor.extent.height = getWindowExtent().height;
+
+    return scissor;
+}
+
+
+template <typename T>
 void phVkEngine<T>::createBackgroundPipelines()
 {
-    if (mesh_pipeline.device == 0)
-        mesh_pipeline = phVkPipeline(device, VULKAN_GRAPHICS_PIPELINE, viewport, scissor);
+    //if (background_pipeline.device == 0)
+    //    background_pipeline = phVkPipeline(device, phVkPipelineType::COMPUTE, getViewport(), getScissor());
 
-    // Shader modules
-    mesh_pipeline.loadVertexShader("../../../../shaders/colored_triangle_mesh.vert.spv");   // TODO: change
-    mesh_pipeline.loadFragmentShader("../../../../shaders/colored_triangle_mesh.frag.spv"); // TODO: change
-
+    //// Shader modules
+    //background_pipeline.loadComputeShader("../../../../shaders/sky.comp.spv");   // TODO: change
 
 
-    // TODO!!
+    ////// TODO!!
 
 
 }
@@ -1106,18 +1157,51 @@ template <typename T>
 void phVkEngine<T>::createMeshPipelines()
 {
     if (mesh_pipeline.device == 0)
-        mesh_pipeline = phVkPipeline(device, VULKAN_COMPUTE_PIPELINE, viewport, scissor);
+    mesh_pipeline = phVkPipeline(device, phVkPipelineType::GRAPHICS, getViewport(), getScissor());
 
     // Shader modules
-    mesh_pipeline.loadComputeShader("../../../../shaders/sky.comp.spv");   // TODO: change
+    mesh_pipeline.loadVertexShader("../../../../shaders/colored_triangle_mesh.vert.spv");   // TODO: change
+    mesh_pipeline.loadFragmentShader("../../../../shaders/colored_triangle_mesh.frag.spv"); // TODO: change
 
+    // Push constants
+    VkPushConstantRange buffer_range{};
+    buffer_range.offset = 0;
+    buffer_range.size = sizeof(GPUDrawPushConstants);
+    buffer_range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
+    mesh_pipeline.addPushConstantRange(buffer_range);
 
-    // TODO!!
+    // Descriptor sets
+    // TODO: confirm this works - doesn't seem like vkguide.dev adds the gpu_scene_data_descriptor_layout
+    mesh_pipeline.addDescriptorSetLayout(gpu_scene_data_descriptor_layout);
+    mesh_pipeline.addDescriptorSetLayout(single_image_descriptor_layout);
 
+    // Input topology
+    mesh_pipeline.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
+    // Fill mode
+    mesh_pipeline.setPolygonMode(VK_POLYGON_MODE_FILL);
 
-    // Build the pipeline
+    // No backface culling
+    mesh_pipeline.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+
+    // No multisampling
+    mesh_pipeline.setMultiSamplingNone();
+
+    // Blending
+    mesh_pipeline.disableBlending();
+    //mesh_pipeline.enableBlendingAdditive();
+
+    // Depth testing
+    // Note: Using reversed depth (near/far) where 1 is near and 0 is far
+    //	     This is a common optimization in Vulkan to avoid depth precision issues
+    mesh_pipeline.enableDepthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
+
+    // Image attachments
+    mesh_pipeline.addColorAttachmentFormat(draw_image.format);
+    mesh_pipeline.setDepthFormat(depth_image.format);
+
+    // -- Build the pipeline --
     mesh_pipeline.createPipeline();
 
     // Shader modules have been compiled into the pipeline and are no longer needed

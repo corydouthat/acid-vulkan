@@ -1,11 +1,13 @@
 // Acid Game Engine - Vulkan (Ver 1.3-1.4)
 // Default Vulkan Initializer Structures
 
+#pragma once
+
 #include <vulkan/vulkan.h>
 
 VkImageViewCreateInfo phVkDefaultImageViewCreateInfo()
 {
-    VkImageViewCreateInfo temp = {};
+    VkImageViewCreateInfo temp {};
 
     temp.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     temp.pNext = nullptr;
@@ -26,7 +28,7 @@ VkImageViewCreateInfo phVkDefaultImageViewCreateInfo()
 
 VkImageCreateInfo phVkDefaultImageCreateInfo()
 {
-	VkImageCreateInfo temp = {};
+	VkImageCreateInfo temp {};
 
     temp.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     temp.pNext = nullptr;
@@ -56,7 +58,7 @@ VkImageCreateInfo phVkDefaultImageCreateInfo()
 
 VkCommandPoolCreateInfo phVkDefaultCommandPoolCreateInfo()
 {
-	VkCommandPoolCreateInfo temp = {};
+	VkCommandPoolCreateInfo temp {};
 
 	temp.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 	temp.pNext = nullptr;
@@ -68,7 +70,7 @@ VkCommandPoolCreateInfo phVkDefaultCommandPoolCreateInfo()
 
 VkCommandBufferAllocateInfo phVkDefaultCommandBufferAllocateInfo()
 {
-	VkCommandBufferAllocateInfo temp = {};
+	VkCommandBufferAllocateInfo temp {};
 
 	temp.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	temp.pNext = nullptr;
@@ -81,7 +83,7 @@ VkCommandBufferAllocateInfo phVkDefaultCommandBufferAllocateInfo()
 
 VkPipelineShaderStageCreateInfo phVkDefaultPipelineShader()
 {
-	VkPipelineShaderStageCreateInfo temp = {};
+	VkPipelineShaderStageCreateInfo temp {};
 
 	temp.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	temp.pNext = nullptr;
@@ -96,7 +98,7 @@ VkPipelineShaderStageCreateInfo phVkDefaultPipelineShader()
 
 VkPipelineShaderStageCreateInfo phVkDefaultShaderStageCreateInfo()
 {
-	VkPipelineShaderStageCreateInfo temp = {};
+	VkPipelineShaderStageCreateInfo temp {};
 
     temp.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     temp.pNext = nullptr;
@@ -111,7 +113,7 @@ VkPipelineShaderStageCreateInfo phVkDefaultShaderStageCreateInfo()
 
 VkCommandBufferBeginInfo phVkDefaultCommandBufferBeginInfo()
 {
-    VkCommandBufferBeginInfo temp = {};
+    VkCommandBufferBeginInfo temp {};
 
     temp.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     temp.pNext = nullptr;
@@ -123,7 +125,7 @@ VkCommandBufferBeginInfo phVkDefaultCommandBufferBeginInfo()
 
 VkCommandBufferSubmitInfo phVkDefaultCommandBufferSubmitInfo()
 {
-    VkCommandBufferSubmitInfo temp{};
+    VkCommandBufferSubmitInfo temp {};
 
     temp.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
     temp.pNext = nullptr;
@@ -135,7 +137,7 @@ VkCommandBufferSubmitInfo phVkDefaultCommandBufferSubmitInfo()
 
 VkSemaphoreSubmitInfo phVkDefaultSemaphoreSubmitInfo()
 {
-    VkSemaphoreSubmitInfo temp{};
+    VkSemaphoreSubmitInfo temp {};
 
     temp.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
     temp.pNext = nullptr;
@@ -149,7 +151,7 @@ VkSemaphoreSubmitInfo phVkDefaultSemaphoreSubmitInfo()
 
 VkSubmitInfo2 phVkDefaultSubmitInfo2()
 {
-    VkSubmitInfo2 temp = {};
+    VkSubmitInfo2 temp {};
 
     temp.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
     temp.pNext = nullptr;
@@ -169,7 +171,7 @@ VkSubmitInfo2 phVkDefaultSubmitInfo2()
 
 VkPresentInfoKHR phVkDefaultPresentInfo()
 {
-    VkPresentInfoKHR temp = {};
+    VkPresentInfoKHR temp {};
 
     temp.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     temp.pNext = nullptr;
@@ -182,3 +184,85 @@ VkPresentInfoKHR phVkDefaultPresentInfo()
 
     return temp;
 }
+
+VkImageSubresourceRange phVkDefaultImageSubresourceRange()
+{
+    VkImageSubresourceRange temp {};
+
+    temp.aspectMask = 0;
+    temp.baseMipLevel = 0;
+    temp.levelCount = VK_REMAINING_MIP_LEVELS;
+    temp.baseArrayLayer = 0;
+    temp.layerCount = VK_REMAINING_ARRAY_LAYERS;
+
+    return temp;
+}
+
+
+VkRenderingAttachmentInfo phVkDefaultColorAttachmentInfo()
+{
+    VkRenderingAttachmentInfo temp {};
+
+    temp.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    temp.pNext = nullptr;
+
+    //temp.imageView;
+    temp.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    
+    //temp.resolveMode;
+    //temp.resolveImageView;
+    //temp.resolveImageLayout;
+
+    temp.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    temp.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    //temp.clearValue;
+
+    return temp;
+}
+
+
+// Note: Using reversed depth (near/far) where 1 is near and 0 is far
+//	     This is a common optimization in Vulkan to avoid depth precision issues
+VkRenderingAttachmentInfo phVkDefaultDepthAttachmentInfo()
+{
+    VkRenderingAttachmentInfo temp {};
+
+    temp.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    temp.pNext = nullptr;
+
+    //temp.imageView;
+    temp.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+
+    //temp.resolveMode;
+    //temp.resolveImageView;
+    //temp.resolveImageLayout; 
+
+    temp.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    temp.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    temp.clearValue.depthStencil.depth = 0.f;
+
+    return temp;
+}
+
+
+
+VkRenderingInfo phVkDefaultRenderingInfo()
+{
+    VkRenderingInfo temp {};
+
+    temp.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    temp.pNext = nullptr;
+
+    //temp.flags = 0;
+
+    //temp.renderArea;
+    temp.layerCount = 1;
+    //temp.viewMask;
+    temp.colorAttachmentCount = 1;
+    temp.pColorAttachments = nullptr;
+    temp.pDepthAttachment = nullptr;
+    temp.pStencilAttachment = nullptr;
+
+    return temp;
+}
+

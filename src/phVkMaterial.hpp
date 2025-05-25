@@ -4,6 +4,7 @@
 #pragma once
 
 #include <iostream>
+#include <filesystem>
 #include <cstdio>
 #include <cstring>
 
@@ -13,10 +14,9 @@
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 
-// Do not include in header file
-// Only add once?
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
+#include "phVkImages.hpp"
+
+//#include <stb_image.h>
 
 #include "array_list.hpp"
 
@@ -27,11 +27,12 @@
 // Texture data structure
 class phVkTexture 
 {
+public:
     unsigned char* data = nullptr;
 
     std::string path;
 
-    bool isLoaded = false;
+    bool is_loaded = false;
 
     int width = 0;
     int height = 0;
@@ -58,10 +59,10 @@ class phVkTexture
     // Move constructor
     phVkTexture(phVkTexture&& other) noexcept
         : data(other.data), width(other.width), height(other.height),
-        channels(other.channels), path(std::move(other.path)), isLoaded(other.isLoaded) 
+        channels(other.channels), path(std::move(other.path)), is_loaded(other.is_loaded) 
     {
         other.data = nullptr;
-        other.isLoaded = false;
+        other.is_loaded = false;
     }
 
     // Move assignment operator
@@ -79,10 +80,10 @@ class phVkTexture
             height = other.height;
             channels = other.channels;
             path = std::move(other.path);
-            isLoaded = other.isLoaded;
+            is_loaded = other.is_loaded;
 
             other.data = nullptr;
-            other.isLoaded = false;
+            other.is_loaded = false;
         }
         return *this;
     }
@@ -132,26 +133,33 @@ public:
         normal_texture = std::make_unique<phVkTexture>();
         height_texture = std::make_unique<phVkTexture>();
     }
+
+    void processMaterial(const aiMaterial* mat, const aiScene* scene, 
+        const std::string& model_directory);
+    std::string getTexturePath(const aiMaterial* mat, aiTextureType type);
+    std::unique_ptr<phVkTexture> loadTexture(const std::string& texture_path, 
+        const std::string& model_directory);
+
 };
 
 
-// TODO
 // Main function to process material data from a loaded model
-void phVkMaterial::processMaterial(const aiMaterial* mat, const aiScene* scene)
+void phVkMaterial::processMaterial(const aiMaterial* mat, const aiScene* scene, 
+    const std::string& model_directory)
 {
     // Get material name
     aiString name;
-    if (aiMat->Get(AI_MATKEY_NAME, name) == AI_SUCCESS) 
+    if (mat->Get(AI_MATKEY_NAME, name) == AI_SUCCESS) 
     {
-        this->name = name;
-        std::cout << "Material " << i << ": " << name.C_Str() << std::endl;
+        this->name = name.C_Str();
+        std::cout << "Material: " << name.C_Str() << std::endl;
     }
 
     // Get material colors
     aiColor4D color;
 
     // Diffuse color
-    if (aiMat->Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS) 
+    if (mat->Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS) 
     {
         diffuse_color[0] = color.r;
         diffuse_color[1] = color.g;
@@ -160,7 +168,7 @@ void phVkMaterial::processMaterial(const aiMaterial* mat, const aiScene* scene)
     }
 
     // Specular color
-    if (aiMat->Get(AI_MATKEY_COLOR_SPECULAR, color) == AI_SUCCESS) 
+    if (mat->Get(AI_MATKEY_COLOR_SPECULAR, color) == AI_SUCCESS) 
     {
         specular_color[0] = color.r;
         specular_color[1] = color.g;
@@ -169,7 +177,7 @@ void phVkMaterial::processMaterial(const aiMaterial* mat, const aiScene* scene)
     }
 
     // Ambient color
-    if (aiMat->Get(AI_MATKEY_COLOR_AMBIENT, color) == AI_SUCCESS) 
+    if (mat->Get(AI_MATKEY_COLOR_AMBIENT, color) == AI_SUCCESS) 
     {
         ambient_color[0] = color.r;
         ambient_color[1] = color.g;
@@ -178,7 +186,7 @@ void phVkMaterial::processMaterial(const aiMaterial* mat, const aiScene* scene)
     }
 
     // Emissive color
-    if (aiMat->Get(AI_MATKEY_COLOR_EMISSIVE, color) == AI_SUCCESS) 
+    if (mat->Get(AI_MATKEY_COLOR_EMISSIVE, color) == AI_SUCCESS) 
     {
         emissive_color[0] = color.r;
         emissive_color[1] = color.g;
@@ -190,25 +198,25 @@ void phVkMaterial::processMaterial(const aiMaterial* mat, const aiScene* scene)
     float value;
 
     // Shininess
-    if (aiMat->Get(AI_MATKEY_SHININESS, value) == AI_SUCCESS) 
+    if (mat->Get(AI_MATKEY_SHININESS, value) == AI_SUCCESS) 
     {
         shininess = value;
     }
 
     // Opacity
-    if (aiMat->Get(AI_MATKEY_OPACITY, value) == AI_SUCCESS) 
+    if (mat->Get(AI_MATKEY_OPACITY, value) == AI_SUCCESS) 
     {
         opacity = value;
     }
 
     // Reflectivity
-    if (aiMat->Get(AI_MATKEY_REFLECTIVITY, value) == AI_SUCCESS) 
+    if (mat->Get(AI_MATKEY_REFLECTIVITY, value) == AI_SUCCESS) 
     {
         reflectivity = value;
     }
 
     // Index of refraction
-    if (aiMat->Get(AI_MATKEY_REFRACTI, value) == AI_SUCCESS) 
+    if (mat->Get(AI_MATKEY_REFRACTI, value) == AI_SUCCESS) 
     {
         refractive_index = value;
     }
@@ -217,20 +225,20 @@ void phVkMaterial::processMaterial(const aiMaterial* mat, const aiScene* scene)
     std::string tex_path;
 
     // Diffuse texture
-    tex_path = getTexturePath(aiMat, aiTextureType_DIFFUSE);
-    diffuse_texture = loadTexture(tex_path, modelDirectory);
+    tex_path = getTexturePath(mat, aiTextureType_DIFFUSE);
+    diffuse_texture = loadTexture(tex_path, model_directory);
 
     // Specular texture
-    tex_path = getTexturePath(aiMat, aiTextureType_SPECULAR);
-    specular_texture = loadTexture(tex_path, modelDirectory);
+    tex_path = getTexturePath(mat, aiTextureType_SPECULAR);
+    specular_texture = loadTexture(tex_path, model_directory);
 
     // Normal texture
-    tex_path = getTexturePath(aiMat, aiTextureType_NORMALS);
-    normal_texture = loadTexture(tex_path, modelDirectory);
+    tex_path = getTexturePath(mat, aiTextureType_NORMALS);
+    normal_texture = loadTexture(tex_path, model_directory);
 
     // Height/bump texture
-    tex_path = getTexturePath(aiMat, aiTextureType_HEIGHT);
-    height_texture = loadTexture(tex_path, modelDirectory);
+    tex_path = getTexturePath(mat, aiTextureType_HEIGHT);
+    height_texture = loadTexture(tex_path, model_directory);
 }
 
 
@@ -251,39 +259,39 @@ std::string phVkMaterial::getTexturePath(const aiMaterial* mat, aiTextureType ty
 
 // Function to load a texture from a file
 std::unique_ptr<phVkTexture> phVkMaterial::loadTexture(
-    const std::string& texturePath, const std::string& modelDirectory) 
+    const std::string& texture_path, const std::string& model_directory) 
 {
     auto texture = std::make_unique<phVkTexture>();
 
     // Save the path for reference
-    texture->path = texturePath;
+    texture->path = texture_path;
 
-    if (texturePath.empty()) 
+    if (texture_path.empty()) 
     {
         return texture; // Empty path, return unloaded texture
     }
 
     // Construct full path
-    std::filesystem::path fullPath;
+    std::filesystem::path full_path;
 
     // Check if the texture path is absolute or relative
-    std::filesystem::path texPath(texturePath);
-    if (texPath.is_absolute()) 
+    std::filesystem::path tex_path(texture_path);
+    if (tex_path.is_absolute()) 
     {
-        fullPath = texPath;
+        full_path = tex_path;
     }
     else 
     {
         // If relative, combine with model directory
-        fullPath = std::filesystem::path(modelDirectory) / texPath;
+        full_path = std::filesystem::path(model_directory) / tex_path;
     }
 
     // Convert to string and normalize path
-    std::string finalPath = fullPath.string();
+    std::string final_path = full_path.string();
 
     // Load the image using stb_image
     texture->data = stbi_load(
-        finalPath.c_str(),
+        final_path.c_str(),
         &texture->width,
         &texture->height,
         &texture->channels,
@@ -292,14 +300,14 @@ std::unique_ptr<phVkTexture> phVkMaterial::loadTexture(
 
     if (texture->data) 
     {
-        texture->isLoaded = true;
-        std::cout << "Loaded texture: " << finalPath << " ("
+        texture->is_loaded = true;
+        std::cout << "Loaded texture: " << final_path << " ("
             << texture->width << "x" << texture->height
             << ", " << texture->channels << " channels)" << std::endl;
     }
     else 
     {
-        std::cerr << "Failed to load texture: " << finalPath << std::endl;
+        std::cerr << "Failed to load texture: " << final_path << std::endl;
         std::cerr << "stbi_failure_reason: " << stbi_failure_reason() << std::endl;
     }
 

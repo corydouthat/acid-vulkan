@@ -32,10 +32,10 @@
 
 #include <vulkan/vulkan.h>
 
-#include "phVkInitDefaults.h"
+#include "phVkInitDefaults.hpp"
 
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
+#define STB_IMAGE_IMPLEMENTATION    // Must include in exactly ONE cpp file
+#include <stb_image.h>        
 
 
 namespace vkutil
@@ -65,7 +65,8 @@ void vkutil::transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout 
     imageBarrier.newLayout = newLayout;
 
     VkImageAspectFlags aspectMask = (newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-    imageBarrier.subresourceRange = vkinit::image_subresource_range(aspectMask);
+    imageBarrier.subresourceRange = phVkDefaultImageSubresourceRange();
+    imageBarrier.subresourceRange.aspectMask = aspectMask;
     imageBarrier.image = image;
 
     VkDependencyInfo depInfo{};
@@ -134,7 +135,8 @@ void vkutil::generate_mipmaps(VkCommandBuffer cmd, VkImage image, VkExtent2D ima
         imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
         VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        imageBarrier.subresourceRange = vkinit::image_subresource_range(aspectMask);
+        imageBarrier.subresourceRange = phVkDefaultImageSubresourceRange();
+        imageBarrier.subresourceRange.aspectMask = aspectMask;
         imageBarrier.subresourceRange.levelCount = 1;
         imageBarrier.subresourceRange.baseMipLevel = mip;
         imageBarrier.image = image;

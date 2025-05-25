@@ -11,6 +11,7 @@
 
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
+#include <assimp/mesh.h>
 #include <assimp/postprocess.h>
 
 #include "array_list.hpp"
@@ -55,7 +56,7 @@ public:
 	ArrayList<unsigned int> indices;	// Vertex indices (triangles)
 
     // Vulkan buffer data
-    const phVkEngine<T>* engine;
+    phVkEngine<T>* engine;
     AllocatedBuffer index_buffer;
     AllocatedBuffer vertex_buffer;
     VkDeviceAddress vertex_buffer_address;
@@ -87,7 +88,7 @@ struct phVkModel
 
     Mat4<T> transform;      // Object transform to global coordinates
 
-	ArrayList<phVkMeshSet> sets;	// Mesh sets
+	ArrayList<phVkMeshSet<T>> sets;	// Mesh sets
 };
 
 
@@ -113,7 +114,7 @@ void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene)
         }
 
         // Texture coordinates
-        if (mesh->hasTextureCoords())
+        if (mesh->HasTextureCoords())
         {
             // TODO: add support for AI_MAX_NUMBER_OF_TEXTURECOORDS != 2
             vertex.uv.x = mesh->mTextureCoords[0];
@@ -121,7 +122,7 @@ void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene)
         }
         else
         {
-            vertex.uv = glm::vec2(0.0f, 0.0f);
+            vertex.uv = Vec2<T>(0.0f, 0.0f);
         }
 
         vertices.push(vertex);
@@ -132,7 +133,7 @@ void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene)
     {
         aiFace face = mesh->mFaces[i];
 
-        if (face.numIndices == 3)
+        if (face.mNumIndices == 3)
         {
             for (unsigned int j = 0; j < face.mNumIndices; j++)
             {
@@ -142,7 +143,7 @@ void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene)
         else
         {
             // TODO: implement non-triangular faces
-            throw std::runtime_error("Failed to load model: " + std::string(importer.GetErrorString()));
+            throw std::runtime_error("Assimp importer found non-triangular faces.");
         }
     }
 }
@@ -166,7 +167,7 @@ void phVkMesh<T>::initVulkan(const phVkEngine<T>* engine)
     VkBufferDeviceAddressInfo device_addr_info{
         .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
         .buffer = vertex_buffer.buffer };
-    vertex_buffer_address = vkGetBufferDeviceAddress(device, &device_addr_info);
+    vertex_buffer_address = vkGetBufferDeviceAddress(engine->device, &device_addr_info);
 
     // Create index buffer
     // Index draws | memory copy

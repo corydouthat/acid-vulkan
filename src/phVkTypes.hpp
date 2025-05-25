@@ -99,6 +99,15 @@ struct GPUSceneData
 };
 
 
+// TODO: remove, replace, or re-name to GPUMeshPushConstants?
+struct GPUDrawPushConstants
+{
+    Mat4f world_matrix;                     // Transform matrix
+    VkDeviceAddress vertex_buffer_address;  // Buffer address
+};
+
+
+
 //// Queue for deleting objects in FIFO order
 //struct phVkDeleteQueue
 //{

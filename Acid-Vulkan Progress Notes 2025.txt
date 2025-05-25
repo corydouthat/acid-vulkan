@@ -1,9 +1,7 @@
-scene_data doesn't exist right? Need to set that up.
-Create material descriptor sets and bind in drawMesh()
-finish draw function(s)
-Load descriptors - transform, etc?
+
 
 Later:
+Finish background shader / background draw functions
 GUI
 Connect physics transforms
 User input callbacks

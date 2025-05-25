@@ -20,12 +20,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 if (NOT TARGET acid-vulkan)
 	add_library(acid-vulkan INTERFACE
 		# including files here will force Visual Studio to show library
-		"src/phVkTypes.hpp"		# Order is important - used in many places
-		"src/phVkConfig.hpp"	# Order is important
+		"src/phVkTypes.hpp"			# Order is important - used in many places
+		"src/phVkConfig.hpp"		# Order is important
+		"src/phVkInitDefaults.hpp"	# Order is important?
 		"src/phVkCamera.hpp"
 		"src/phVkDescriptors.hpp"
-		"src/phVkEngine.hpp"
-		"src/phVkImages.hpp"
+		"src/phVkEngine.hpp"		# Includes VMA_IMPLEMENTATIION
+		"src/phVkImages.hpp"		# Includes STB_IMAGE_IMPLEMENTATION
 		"src/phVkMaterial.hpp"
 		"src/phVkModel.hpp"
 		"src/phVkPipelines.hpp"

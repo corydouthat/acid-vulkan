@@ -14,16 +14,16 @@
 #include "array_list.hpp"
 
 #include "phVkTypes.hpp"
-#include "phVkInitDefaults.h"
+#include "phVkInitDefaults.hpp"
 
 // TODO: Re-write this with inheritance for different pipelines? But there are only three?
 
 enum class phVkPipelineType
 {
-	VULKAN_PIPELINE_NONE = 0,
-	VULKAN_COMPUTE_PIPELINE = 1,
-	VULKAN_GRAPHICS_PIPELINE = 2,
-	//VULKAN_RAY_TRACING_PIPELINE = 3,
+	NONE = 0,
+	COMPUTEE = 1,
+	GRAPHICS = 2,
+	//RAY_TRACING = 3,
 };
 
 
@@ -166,7 +166,7 @@ public:
 
 	// Depth testing
 	void disableDepthTest();
-	void enableDepthTest(bool depth_write_enable, VkCompareOp op, float min = 0.f, float max = 1.f);
+	void enableDepthtest(bool depth_write_enable, VkCompareOp op, float min = 0.f, float max = 1.f);
 
 	// Image format
 	void setDepthFormat(VkFormat format);
@@ -230,7 +230,7 @@ void phVkPipeline::addPushConstantRange(VkPushConstantRange push_constant_range)
 	push_constant_ranges.push(push_constant_range);
 
 	layout_create_info.pushConstantRangeCount = push_constant_ranges.getCount();
-	layout_create_info.pPushConstantRanges = &push_constant_ranges.getData();
+	layout_create_info.pPushConstantRanges = push_constant_ranges.getData();
 }
 
 
@@ -239,13 +239,13 @@ void phVkPipeline::addDescriptorSetLayout(VkDescriptorSetLayout descriptor_set_l
 	descriptor_set_layouts.push(descriptor_set_layout);
 
 	layout_create_info.setLayoutCount = descriptor_set_layouts.getCount();
-	layout_create_info.pSetLayouts = &descriptor_set_layouts.getData();
+	layout_create_info.pSetLayouts = descriptor_set_layouts.getData();
 }
 
 
 void phVkPipeline::setComputeShader(VkShaderModule cs, const char* entry_function)
 {
-	VkPipelineShaderStageCreateInfo temp_create_info = phvkDefaultShaderStageCreateInfo();
+	VkPipelineShaderStageCreateInfo temp_create_info = phVkDefaultShaderStageCreateInfo();
 	temp_create_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
 	temp_create_info.pName = entry_function;
 	temp_create_info.module = cs;
@@ -255,7 +255,7 @@ void phVkPipeline::setComputeShader(VkShaderModule cs, const char* entry_functio
 
 void phVkPipeline::setVertexShader(VkShaderModule vs)
 {
-	VkPipelineShaderStageCreateInfo temp_create_info = phvkDefaultShaderStageCreateInfo();
+	VkPipelineShaderStageCreateInfo temp_create_info = phVkDefaultShaderStageCreateInfo();
 	temp_create_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
 	temp_create_info.module = vs;
 	shader_stages.push(temp_create_info);
@@ -264,7 +264,7 @@ void phVkPipeline::setVertexShader(VkShaderModule vs)
 
 void phVkPipeline::setFragmentShader(VkShaderModule fs)
 {
-	VkPipelineShaderStageCreateInfo temp_create_info = phvkDefaultShaderStageCreateInfo();
+	VkPipelineShaderStageCreateInfo temp_create_info = phVkDefaultShaderStageCreateInfo();
 	temp_create_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
 	temp_create_info.module = fs;
 	shader_stages.push(temp_create_info);
@@ -278,9 +278,9 @@ void phVkPipeline::setGraphicsShaders(VkShaderModule vs, VkShaderModule fs)
 }
 
 
-bool phVkPipeline::loadComputeShader(const char* file_path, const char* entry_function = "main")
+bool phVkPipeline::loadComputeShader(const char* file_path, const char* entry_function)
 {
-	VkPipelineShaderStageCreateInfo temp_create_info = phvkDefaultShaderStageCreateInfo();
+	VkPipelineShaderStageCreateInfo temp_create_info = phVkDefaultShaderStageCreateInfo();
 	temp_create_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
 	temp_create_info.pName = entry_function;
 	unsigned int stage_index = shader_stages.push(temp_create_info);
@@ -298,7 +298,7 @@ bool phVkPipeline::loadComputeShader(const char* file_path, const char* entry_fu
 
 bool phVkPipeline::loadVertexShader(const char* file_path)
 {
-	VkPipelineShaderStageCreateInfo temp_create_info = phvkDefaultShaderStageCreateInfo();
+	VkPipelineShaderStageCreateInfo temp_create_info = phVkDefaultShaderStageCreateInfo();
 	temp_create_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
 	unsigned int stage_index = shader_stages.push(temp_create_info);
 
@@ -315,7 +315,7 @@ bool phVkPipeline::loadVertexShader(const char* file_path)
 
 bool phVkPipeline::loadFragmentShader(const char* file_path)
 {
-	VkPipelineShaderStageCreateInfo temp_create_info = phvkDefaultShaderStageCreateInfo();
+	VkPipelineShaderStageCreateInfo temp_create_info = phVkDefaultShaderStageCreateInfo();
 	temp_create_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
 	unsigned int stage_index = shader_stages.push(temp_create_info);
 
@@ -415,7 +415,7 @@ void phVkPipeline::disableDepthTest()
 }
 
 
-void phVkPipeline::enableDepthTest(bool depth_write_enable, VkCompareOp op, float min, float max)
+void phVkPipeline::enableDepthtest(bool depth_write_enable, VkCompareOp op, float min, float max)
 {
 	depth_stencil_info.depthTestEnable = VK_TRUE;
 	depth_stencil_info.depthWriteEnable = depth_write_enable;
@@ -440,7 +440,7 @@ void phVkPipeline::addColorAttachmentFormat(VkFormat format)
 	color_attachment_formats.push(format);
 
 	render_info.colorAttachmentCount = color_attachment_formats.getCount();
-	render_info.pColorAttachmentFormats = &color_attachment_formats.getData();
+	render_info.pColorAttachmentFormats = color_attachment_formats.getData();
 }
 
 
@@ -548,7 +548,7 @@ void phVkPipeline::clearToDefaults()
 	if (pipeline)
 		vkDestroyPipeline(device, pipeline, nullptr);
 
-	type = VULKAN_PIPELINE_NONE;
+	type = phVkPipelineType::NONE;
 	device = 0;
 	viewport = VkViewport{};
 	scissor = VkRect2D{};

@@ -1,6 +1,8 @@
 // Acid Game Engine - Vulkan (Ver 1.3-1.4)
 // Configuration
 
+#pragma once
+
 // TODO: make most of these things configurable?
 
 // Debug
