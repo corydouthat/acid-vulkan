@@ -63,7 +63,7 @@ public:
 
     // Functions
     void processMesh(const aiMesh* mesh, const aiScene* scene);
-    void initVulkan(const phVkEngine<T>* engine);
+    void initVulkan(phVkEngine<T>* engine);
     void vulkanCleanup();
 
     ~phVkMesh() { vulkanCleanup(); }
@@ -114,11 +114,11 @@ void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene)
         }
 
         // Texture coordinates
-        if (mesh->HasTextureCoords())
+        if (mesh->HasTextureCoords(i))
         {
             // TODO: add support for AI_MAX_NUMBER_OF_TEXTURECOORDS != 2
-            vertex.uv.x = mesh->mTextureCoords[0];
-            vertex.uv.y = mesh->mTextureCoords[1];
+            vertex.uv.x = mesh->mTextureCoords[i]->x;
+            vertex.uv.y = mesh->mTextureCoords[i]->y;
         }
         else
         {
@@ -149,10 +149,10 @@ void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene)
 }
 
 template <typename T>
-void phVkMesh<T>::initVulkan(const phVkEngine<T>* engine)
+void phVkMesh<T>::initVulkan(phVkEngine<T>* engine)
 {
-    unsigned int vertex_buf_size = vertices.size() * sizeof(phVkVertex<T>);
-    unsigned int index_buf_size = indices.size() * sizeof(uint32_t);
+    unsigned int vertex_buf_size = vertices.getCount() * sizeof(phVkVertex<T>);
+    unsigned int index_buf_size = indices.getCount() * sizeof(uint32_t);
 
     this->engine = engine;
 
@@ -190,7 +190,7 @@ void phVkMesh<T>::initVulkan(const phVkEngine<T>* engine)
     memcpy((char*)data + vertex_buf_size, indices.getData(), index_buf_size);
 
     // Submit commands to copy from staging to GPU buffer
-    immediateSubmit([&](VkCommandBuffer cmd)
+    engine->immediateSubmit([&](VkCommandBuffer cmd)
         {
             VkBufferCopy vertex_copy{ 0 };
             vertex_copy.dstOffset = 0;
@@ -208,7 +208,7 @@ void phVkMesh<T>::initVulkan(const phVkEngine<T>* engine)
         });
 
     // Destroy temporary staging buffer
-    engine.destroyBuffer(staging);
+    engine->destroyBuffer(staging);
 }
 
 

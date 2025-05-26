@@ -29,7 +29,7 @@ public:
     ArrayList<std::string> file_paths;
 
 	ArrayList<phVkMesh<T>> meshes;
-	ArrayList<phVkMaterial> materials;
+	ArrayList<phVkMaterial<T>> materials;
 
 	ArrayList<phVkModel<T>> models;
 
@@ -38,6 +38,9 @@ public:
     void processNode(aiNode* node, const aiScene* scene, Mat4<T> global_transform = Mat4<T>(), 
         unsigned int meshes_offset = 0, unsigned int materials_offset = 0);
     void processMesh(const aiMesh* mesh, const aiScene* scene, phVkMesh<T>* new_mesh);
+    void initVulkan(phVkEngine<T>* engine);
+
+    // No destructor - rely on other objects destructors
 };
 
 
@@ -81,7 +84,7 @@ void phVkScene<T>::load(std::string path)
     // Note: index may not match Assimp index if multiple files have been loaded into the scene
     for (unsigned int i = 0; i < scene->mNumMaterials; i++)
     {
-        int mat = materials.push(phVkMaterial());
+        int mat = materials.push(phVkMaterial<T>());
         materials[mat].processMaterial(scene->mMaterials[i], scene, model_directory);
     }
 
@@ -108,10 +111,10 @@ void phVkScene<T>::processNode(aiNode* node, const aiScene* scene, Mat4<T> globa
         return;
 
     // Get node name
-    models[model].name = node->mName;
+    models[model].name = node->mName.C_Str();
 
     // Get node transformation matrix
-    global_transform = global_transform * Mat4<T>(node->mTransformation);
+    global_transform = global_transform * Mat4<T>(&node->mTransformation[0][0]);
     models[model].transform = global_transform;
 
     // Process all meshes in the current node
@@ -136,3 +139,16 @@ void phVkScene<T>::processNode(aiNode* node, const aiScene* scene, Mat4<T> globa
 }
 
 
+template <typename T>
+void phVkScene<T>::initVulkan(phVkEngine<T>* engine)
+{
+    for (int i = 0; i < meshes.getCount(); i++)
+    {
+        meshes[i].initVulkan(engine);
+    }
+
+    for (int i = 0; i < materials.getCount(); i++)
+    {
+        materials[i].initVulkan(engine);
+    }
+}

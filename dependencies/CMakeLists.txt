@@ -8,14 +8,15 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # Vulkan
 find_package(Vulkan REQUIRED)
+target_link_libraries(dependencies INTERFACE Vulkan::Vulkan)
 
 # Add assimp
 add_subdirectory(assimp assimp)
 target_link_libraries(dependencies INTERFACE assimp)
 
 # Add fmt
-add_subdirectory(fmt fmt)
-target_link_libraries(dependencies INTERFACE fmt)
+#add_subdirectory(fmt fmt)
+#target_link_libraries(dependencies INTERFACE fmt)
 
 # Add imgui
 add_library(imgui STATIC
@@ -49,7 +50,7 @@ target_link_libraries(dependencies INTERFACE stb)
 
 # Add vk-bootstrap
 add_subdirectory(vk-bootstrap vk-bootstrap)
-target_link_libraries(dependencies INTERFACE vk-bootstrap)
+target_link_libraries(dependencies INTERFACE vk-bootstrap::vk-bootstrap)
 
 # Add volk
 # Note: volk causes issues with imgui when calling vkCreateSampler

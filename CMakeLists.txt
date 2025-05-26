@@ -23,10 +23,10 @@ if (NOT TARGET acid-vulkan)
 		"src/phVkTypes.hpp"			# Order is important - used in many places
 		"src/phVkConfig.hpp"		# Order is important
 		"src/phVkInitDefaults.hpp"	# Order is important?
-		"src/phVkCamera.hpp"
-		"src/phVkDescriptors.hpp"
 		"src/phVkEngine.hpp"		# Includes VMA_IMPLEMENTATIION
 		"src/phVkImages.hpp"		# Includes STB_IMAGE_IMPLEMENTATION
+		"src/phVkCamera.hpp"
+		"src/phVkDescriptors.hpp"
 		"src/phVkMaterial.hpp"
 		"src/phVkModel.hpp"
 		"src/phVkPipelines.hpp"

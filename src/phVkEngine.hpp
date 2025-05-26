@@ -116,11 +116,15 @@ public:
     bool initGUI();
     bool loadScene(std::string file_path);
 
+    // -- Status Functions --
+    bool isRunning() { return is_initialized && !sdl_quit; }
+
     // -- Get Functions --
     phVkFrameData& getCurrentFrame() { return frames[frame_number % FRAME_BUFFER_COUNT]; };
     VkExtent2D getWindowExtent();
     VkExtent2D getSwapchainExtent();
     VkExtent2D getActualExtent(bool clamp = true);
+    VkExtent2D getDrawImageExtent();
     VkViewport getViewport();
     VkRect2D getScissor();
 
@@ -132,6 +136,9 @@ public:
         VkBufferUsageFlags usage, VmaMemoryUsage memory_usage);
     void destroyBuffer(const AllocatedBuffer& buffer);
 
+    // -- Command Functions --
+    void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
+
     // -- Cleanup --
     void cleanup();
 
@@ -141,6 +148,7 @@ private:
     // -- Run Functions --
     void draw();
     void renderImGui();
+    void drawImgui(VkCommandBuffer cmd, VkImageView target_image_view);
     void drawBackground(VkCommandBuffer cmd);
     void drawMesh(VkCommandBuffer cmd);
 
@@ -163,6 +171,13 @@ private:
     void createBackgroundPipelines();
     void createMeshPipelines();
     void createMaterialPipelines();
+
+
+
+    friend class phVkScene<T>;
+    friend class phVkMesh<T>;
+    friend class phVkMaterial<T>;
+
 };
 
 
@@ -172,6 +187,7 @@ bool phVkEngine<T>::init(uint32_t width, uint32_t height, std::string title)
 {
 	if (!createWindow(width, height, title))
 		return false;
+    
     initVulkan();
 	initSwapchain();
     initCommands();
@@ -180,6 +196,8 @@ bool phVkEngine<T>::init(uint32_t width, uint32_t height, std::string title)
     initPipelines();
     initBuffers();
 
+    // TODO: add more checks
+    is_initialized = true;
     return true;
 }
 
@@ -191,17 +209,19 @@ bool phVkEngine<T>::loadScene(std::string file_path)
 
     scenes[scene].load(file_path);
 
-    scenes[scene].initVulkan();
+    scenes[scene].initVulkan(this);
+
+    return true;    // TODO?
 }
 
 
 template <typename T>
 VkExtent2D phVkEngine<T>::getWindowExtent()
 {
-    VkExtent2D temp;
-    SDL_GetWindowSizeInPixels(window, &(int)temp.width, &(int)temp.height);
+    int width, height;
+    SDL_GetWindowSizeInPixels(window, &width, &height);
 
-    return temp;
+    return VkExtent2D{ (uint32_t)width, (uint32_t)height };
 }
 
 
@@ -276,6 +296,43 @@ template <typename T>
 void phVkEngine<T>::destroyBuffer(const AllocatedBuffer& buffer)
 {
     vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
+}
+
+
+template <typename T>
+void phVkEngine<T>::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function)
+{
+    // Similar to executing commands on the GPU --
+    // the main difference is submit is not synchronized with the swapchain
+    // TODO: optimization - use use separate queue instead of graphics queue
+
+    // Reset the fence and command buffer
+    VK_CHECK(vkResetFences(device, 1, &imm_fence));
+    VK_CHECK(vkResetCommandBuffer(imm_command_buffer, 0));
+
+    VkCommandBuffer cmd = imm_command_buffer;
+
+    VkCommandBufferBeginInfo cmd_begin_info = phVkDefaultCommandBufferBeginInfo();
+    cmd_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    VK_CHECK(vkBeginCommandBuffer(cmd, &cmd_begin_info));
+
+    function(cmd);
+
+    VK_CHECK(vkEndCommandBuffer(cmd));
+
+    VkCommandBufferSubmitInfo cmd_info = phVkDefaultCommandBufferSubmitInfo();
+    cmd_info.commandBuffer = cmd;
+    VkSubmitInfo2 submit = phVkDefaultSubmitInfo2();
+    submit.pCommandBufferInfos = &cmd_info;
+
+    // Submit command buffer to the queue and execute it
+    VK_CHECK(vkQueueSubmit2(graphics_queue, 1, &submit, imm_fence));
+
+    // Wait for immediate command fence
+    VK_CHECK(vkWaitForFences(device, 1, &imm_fence, true, 9999999999));
+
+    // Now the engine will go back to waiting on render_fence
 }
 
 
@@ -358,7 +415,7 @@ void phVkEngine<T>::draw()
     // Destroy frame's old uniform buffer(s) and descriptor set(s)
     // TODO: change this to only make the buffers once and not re-allocate every frame
     // Is this because there are separate descriptor sets allocated from the pool for each mesh object every frame?
-    destroyBuffer(getCurrentFrame().scene_data_buffer);
+    destroyBuffer(scene_data_buffer);
     getCurrentFrame().frame_descriptors.clearPools(device);
 
     // TODO: or can we re-allocate the buffers / pools here (currently in drawGeometry)
@@ -386,10 +443,10 @@ void phVkEngine<T>::draw()
     VK_CHECK(vkResetFences(device, 1, &getCurrentFrame().render_fence));
 
     // Reset command buffer
-    VK_CHECK(vkResetCommandBuffer(getCurrentFrame().main_command_buffer, 0));
+    VK_CHECK(vkResetCommandBuffer(getCurrentFrame().command_buffer, 0));
 
     // Set up command buffer
-    VkCommandBuffer cmd = getCurrentFrame().main_command_buffer;
+    VkCommandBuffer cmd = getCurrentFrame().command_buffer;
     VkCommandBufferBeginInfo cmd_begin_info = phVkDefaultCommandBufferBeginInfo();
     cmd_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmd_begin_info));
@@ -429,7 +486,7 @@ void phVkEngine<T>::draw()
 
     // Copy draw image into swapchain
     vkutil::copy_image_to_image(cmd, draw_image.image,
-        swapchain_images[image_index], draw_image.extent, swapchain_extent);
+        swapchain_images[image_index], getDrawImageExtent(), swapchain_extent);
 
     // -- GUI Draw --
     // Transition swapchain image to appropriate layout for ImGui
@@ -451,7 +508,7 @@ void phVkEngine<T>::draw()
 
 
     // -- Submit Command Buffer --
-    VkCommandBufferSubmitInfo cmd_info = phVkDefaultCommandBufferSubmitInfo;
+    VkCommandBufferSubmitInfo cmd_info = phVkDefaultCommandBufferSubmitInfo();
     cmd_info.commandBuffer = cmd;
 
     VkSemaphoreSubmitInfo wait_info = phVkDefaultSemaphoreSubmitInfo();
@@ -463,11 +520,11 @@ void phVkEngine<T>::draw()
 
     VkSubmitInfo2 submit = phVkDefaultSubmitInfo2();
     submit.waitSemaphoreInfoCount = 1;
-    submit.pWaitSemaphoreInfos = wait_info;
+    submit.pWaitSemaphoreInfos = &wait_info;
     submit.commandBufferInfoCount = 1;
-    submit.pCommandBufferInfos = cmd_info;
+    submit.pCommandBufferInfos = &cmd_info;
     submit.signalSemaphoreInfoCount = 1;
-    submit.pSignalSemaphoreInfos = signal_info;
+    submit.pSignalSemaphoreInfos = &signal_info;
 
     // Submit command buffer to the queue
     // Assign render fence
@@ -520,6 +577,24 @@ void phVkEngine<T>::renderImGui()
 }
 
 
+template<typename T>
+void phVkEngine<T>::drawImgui(VkCommandBuffer cmd, VkImageView target_image_view)
+{
+    VkRenderingAttachmentInfo color_attachment = phVkDefaultColorAttachmentInfo();
+    color_attachment.imageView = target_image_view;
+
+    VkRenderingInfo render_info = phVkDefaultRenderingInfo();
+    render_info.renderArea = VkRect2D{ VkOffset2D { 0, 0 }, getWindowExtent() };
+    render_info.pColorAttachments = &color_attachment;
+
+    vkCmdBeginRendering(cmd, &render_info);
+
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+
+    vkCmdEndRendering(cmd);
+}
+
+
 template <typename T>
 void phVkEngine<T>::drawBackground(VkCommandBuffer cmd)
 {
@@ -548,9 +623,9 @@ void phVkEngine<T>::drawBackground(VkCommandBuffer cmd)
 
     //// -- Dispatch --
     //// 16x16 workgroup
-    //// TODO: confirm draw_image.extent - vkguide.dev uses getWindowExtent()
-    //vkCmdDispatch(cmd, std::ceil(draw_image.extent.width / 16.0),
-    //    std::ceil(draw_image.extent.height / 16.0), 1);
+    //// TODO: confirm getDrawImageExtent() - vkguide.dev uses getWindowExtent()
+    //vkCmdDispatch(cmd, std::ceil(getDrawImageExtent().width / 16.0),
+    //    std::ceil(getDrawImageExtent().height / 16.0), 1);
 }
 
 
@@ -564,8 +639,10 @@ void phVkEngine<T>::drawMesh(VkCommandBuffer cmd)
 
     // -- Set Viewport and Scissor --
     // Set after each pipeline bind (with exceptions)
-    vkCmdSetViewport(cmd, 0, 1, &getViewport());
-    vkCmdSetScissor(cmd, 0, 1, &getScissor());
+    VkViewport viewport = getViewport();
+    VkRect2D scissor = getScissor();
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
 
     // -- Scene Data --
     // Allocate Descriptor set for scene data buffer
@@ -618,7 +695,7 @@ void phVkEngine<T>::drawMesh(VkCommandBuffer cmd)
         {
             // Push constants - Model-specific
             GPUDrawPushConstants push_constants;
-            push_constants.world_matrix = scenes[s].models.transform;
+            push_constants.world_matrix = scenes[s].models[i].transform;
 
             for (unsigned int j = 0; j < scenes[s].models[i].sets.getCount(); j++)
             {
@@ -643,7 +720,7 @@ void phVkEngine<T>::drawMesh(VkCommandBuffer cmd)
                     0, VK_INDEX_TYPE_UINT32);
 
                 // Vulkan Draw
-                vkCmdDrawIndexed(cmd, scenes[s].meshes[mesh_i].vertices.count, 1, 0, 0, 0);
+                vkCmdDrawIndexed(cmd, scenes[s].meshes[mesh_i].vertices.getCount(), 1, 0, 0, 0);
             }
         }
     }
@@ -756,8 +833,6 @@ void phVkEngine<T>::initVulkan()
     allocator_info.instance = instance;
     allocator_info.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     vmaCreateAllocator(&allocator_info, &allocator);
-
-    return true;
 }
 
 
@@ -1023,18 +1098,8 @@ void phVkEngine<T>::createSwapchain(uint32_t width, uint32_t height)
 
     VkExtent2D swapchain_extent = vkb_swapchain.extent;
     swapchain = vkb_swapchain.swapchain;
-    for (unsigned int i = 0; i < vkb_swapchain.get_images().value().size; i++)
-    {
-        // TODO: Inefficient conversion from vector to ArrayList
-		//       Eliminate vkb or make an ArrayList(vector) constructor?
-        swapchain_images.push_back(vkb_swapchain.get_images().value()[i]);
-    }
-    for (unsigned int i = 0; i < vkb_swapchain.get_image_views().value().size; i++)
-    {
-        // TODO: Inefficient conversion from vector to ArrayList
-        //       Eliminate vkb or make an ArrayList(vector) constructor?
-        swapchain_images.push_back(vkb_swapchain.get_image_views().value()[i]);
-    }
+    swapchain_images = vkb_swapchain.get_images().value();
+    swapchain_image_views = vkb_swapchain.get_image_views().value();
 }
 
 
@@ -1044,7 +1109,7 @@ void phVkEngine<T>::destroySwapchain()
     vkDestroySwapchainKHR(device, swapchain, nullptr);
 
     // Destroy swapchain resources
-    for (int i = 0; i < swapchain_image_views.size(); i++)
+    for (int i = 0; i < swapchain_image_views.getCount(); i++)
     {
         vkDestroyImageView(device, swapchain_image_views[i], nullptr);
     }
@@ -1104,6 +1169,16 @@ VkExtent2D phVkEngine<T>::getActualExtent(bool clamp)
 
         return actual_extent;
     }
+}
+
+
+template <typename T>
+VkExtent2D phVkEngine<T>::getDrawImageExtent()
+{
+    return VkExtent2D{
+        .width = draw_image.extent.width,
+        .height = draw_image.extent.height
+    };
 }
 
 

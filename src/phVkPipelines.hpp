@@ -189,11 +189,9 @@ phVkPipeline::phVkPipeline()
 }
 
 
-phVkPipeline::phVkPipeline(VkDevice device, phVkPipelineType type, 
-	VkViewport viewport, VkRect2D scissor)
+phVkPipeline::phVkPipeline(VkDevice device, phVkPipelineType type,
+	VkViewport viewport, VkRect2D scissor) : phVkPipeline() // Clear
 {
-	phVkPipeline();		// calls clearToDefaults()
-
 	setType(type);
 	setDevice(device);
 	setViewportScissor(viewport, scissor);

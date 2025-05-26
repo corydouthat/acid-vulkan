@@ -157,14 +157,14 @@ VkSubmitInfo2 phVkDefaultSubmitInfo2()
     temp.pNext = nullptr;
     //temp.flags;
 
-    //temp.waitSemaphoreInfoCount;
-    //temp.pWaitSemaphoreInfos;
+    temp.waitSemaphoreInfoCount = 0;
+    temp.pWaitSemaphoreInfos = nullptr;
 
-    //temp.commandBufferInfoCount;
+    temp.commandBufferInfoCount = 1;    // Assume there will be command buffer info at minimum
     //temp.pCommandBufferInfos;
 
-    //temp.signalSemaphoreInfoCount;
-    //temp.pSignalSemaphoreInfos;
+    temp.signalSemaphoreInfoCount = 0;
+    temp.pSignalSemaphoreInfos = nullptr;
 
     return temp;
 }

@@ -14,14 +14,19 @@
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 
+#include "phVkEngine.hpp"
 #include "phVkImages.hpp"
 
-//#include <stb_image.h>
+//#include <stb_image.h>    // Only include once?
 
 #include "array_list.hpp"
 
 #include "vec.hpp"
 #include "mat.hpp"
+
+
+template <typename T>
+class phVkEngine;
 
 
 // Texture data structure
@@ -38,63 +43,108 @@ public:
     int height = 0;
     int channels = 0;
 
-    // Constructor
     phVkTexture() = default;
+    phVkTexture(const phVkTexture&) = delete;   // Disable copy constructor
+    ~phVkTexture();
+    const phVkTexture& operator=(const phVkTexture& other);
 
-    // Destructor
-    ~phVkTexture() 
-    {
-        if (data) 
-        {
-            stbi_image_free(data);
-            data = nullptr;
-        }
-    }
-
-    // Disable copy operations
-    // TODO: is this necessary?
-    phVkTexture(const phVkTexture&) = delete;
-    phVkTexture& operator=(const phVkTexture&) = delete;
-
-    // Move constructor
-    phVkTexture(phVkTexture&& other) noexcept
-        : data(other.data), width(other.width), height(other.height),
-        channels(other.channels), path(std::move(other.path)), is_loaded(other.is_loaded) 
-    {
-        other.data = nullptr;
-        other.is_loaded = false;
-    }
-
-    // Move assignment operator
-    phVkTexture& operator=(phVkTexture&& other) noexcept 
-    {
-        if (this != &other) 
-        {
-            if (data) 
-            {
-                stbi_image_free(data);
-            }
-
-            data = other.data;
-            width = other.width;
-            height = other.height;
-            channels = other.channels;
-            path = std::move(other.path);
-            is_loaded = other.is_loaded;
-
-            other.data = nullptr;
-            other.is_loaded = false;
-        }
-        return *this;
-    }
+    // Functions
+    bool loadTexture(const std::string& texture_path, const std::string& model_directory);
 };
 
 
+phVkTexture::~phVkTexture()
+{
+    if (data)
+    {
+        stbi_image_free(data);
+        data = nullptr;
+    }
+}
+
+const phVkTexture& phVkTexture::operator=(const phVkTexture& other)
+{
+    path = other.path;
+
+    is_loaded = other.is_loaded;
+
+    width = other.width;
+    height = other.height;
+    channels = other.channels;
+
+    if (is_loaded)
+        memcpy(data, other.data, width * height * channels);
+    else
+        data = nullptr;
+
+    return *this;
+}
+
+
+// Function to load a texture from a file
+bool phVkTexture::loadTexture(
+    const std::string& texture_path, const std::string& model_directory)
+{
+    // Save the path for reference
+    path = texture_path;
+
+    if (texture_path.empty())
+        return false;
+
+    // Construct full path
+    std::filesystem::path full_path;
+
+    // Check if the texture path is absolute or relative
+    std::filesystem::path tex_path(texture_path);
+    if (tex_path.is_absolute())
+    {
+        full_path = tex_path;
+    }
+    else
+    {
+        // If relative, combine with model directory
+        full_path = std::filesystem::path(model_directory) / tex_path;
+    }
+
+    // Convert to string and normalize path
+    std::string final_path = full_path.string();
+
+    // Load the image using stb_image
+    data = stbi_load(
+        final_path.c_str(),
+        &width,
+        &height,
+        &channels,
+        0  // 0 = auto-detect channels
+    );
+
+    if (data)
+    {
+        is_loaded = true;
+        std::cout << "Loaded texture: " << final_path << " ("
+            << width << "x" << height
+            << ", " << channels << " channels)" << std::endl;
+
+        return true;
+    }
+    else
+    {
+        std::cerr << "Failed to load texture: " << final_path << std::endl;
+        std::cerr << "stbi_failure_reason: " << stbi_failure_reason() << std::endl;
+
+        return false;
+    }
+}
+
+
+template<typename T = float>    // Only needed for phVkEngine pointer type?
 class phVkMaterial
 {
 public:
     std::string name;		// Human friendly name (optional)
     std::string file_path;	// Original file path
+
+    phVkEngine<T>* engine;
 
     // Basic colors
     float diffuse_color[4];
@@ -109,14 +159,16 @@ public:
     float refractive_index; // Index of refraction
 
     // Texture objects
-    std::unique_ptr<phVkTexture> diffuse_texture;
-    std::unique_ptr<phVkTexture> specular_texture;
-    std::unique_ptr<phVkTexture> normal_texture;
-    std::unique_ptr<phVkTexture> height_texture;
+    phVkTexture diffuse_texture;
+    phVkTexture specular_texture;
+    phVkTexture normal_texture;
+    phVkTexture height_texture;
 
     // Default constructor with some reasonable values
     phVkMaterial() 
     {
+        engine = nullptr;
+
         // Initialize with default values
         diffuse_color[0] = diffuse_color[1] = diffuse_color[2] = 0.8f; diffuse_color[3] = 1.0f;
         specular_color[0] = specular_color[1] = specular_color[2] = 0.0f; specular_color[3] = 1.0f;
@@ -127,24 +179,23 @@ public:
         opacity = 1.0f;
         reflectivity = 0.0f;
         refractive_index = 1.0f;
-
-        diffuse_texture = std::make_unique<phVkTexture>();
-        specular_texture = std::make_unique<phVkTexture>();
-        normal_texture = std::make_unique<phVkTexture>();
-        height_texture = std::make_unique<phVkTexture>();
     }
 
+    // Functions
     void processMaterial(const aiMaterial* mat, const aiScene* scene, 
         const std::string& model_directory);
     std::string getTexturePath(const aiMaterial* mat, aiTextureType type);
-    std::unique_ptr<phVkTexture> loadTexture(const std::string& texture_path, 
+    phVkTexture loadTexture(const std::string& texture_path, 
         const std::string& model_directory);
 
+    void initVulkan(phVkEngine<T>* engine);
+    void vulkanCleanup();
 };
 
 
 // Main function to process material data from a loaded model
-void phVkMaterial::processMaterial(const aiMaterial* mat, const aiScene* scene, 
+template<typename T>
+void phVkMaterial<T>::processMaterial(const aiMaterial* mat, const aiScene* scene, 
     const std::string& model_directory)
 {
     // Get material name
@@ -226,24 +277,25 @@ void phVkMaterial::processMaterial(const aiMaterial* mat, const aiScene* scene,
 
     // Diffuse texture
     tex_path = getTexturePath(mat, aiTextureType_DIFFUSE);
-    diffuse_texture = loadTexture(tex_path, model_directory);
+    diffuse_texture.loadTexture(tex_path, model_directory);
 
     // Specular texture
     tex_path = getTexturePath(mat, aiTextureType_SPECULAR);
-    specular_texture = loadTexture(tex_path, model_directory);
+    specular_texture.loadTexture(tex_path, model_directory);
 
     // Normal texture
     tex_path = getTexturePath(mat, aiTextureType_NORMALS);
-    normal_texture = loadTexture(tex_path, model_directory);
+    normal_texture.loadTexture(tex_path, model_directory);
 
     // Height/bump texture
     tex_path = getTexturePath(mat, aiTextureType_HEIGHT);
-    height_texture = loadTexture(tex_path, model_directory);
+    height_texture.loadTexture(tex_path, model_directory);
 }
 
 
 // Extract a texture path from a material
-std::string phVkMaterial::getTexturePath(const aiMaterial* mat, aiTextureType type)
+template<typename T>
+std::string phVkMaterial<T>::getTexturePath(const aiMaterial* mat, aiTextureType type)
 {
     if (mat->GetTextureCount(type) > 0)
     {
@@ -257,59 +309,17 @@ std::string phVkMaterial::getTexturePath(const aiMaterial* mat, aiTextureType ty
 }
 
 
-// Function to load a texture from a file
-std::unique_ptr<phVkTexture> phVkMaterial::loadTexture(
-    const std::string& texture_path, const std::string& model_directory) 
+template <typename T>
+void phVkMaterial<T>::initVulkan(phVkEngine<T>* engine)
 {
-    auto texture = std::make_unique<phVkTexture>();
+    this->engine = engine;
 
-    // Save the path for reference
-    texture->path = texture_path;
+    // TODO
+}
 
-    if (texture_path.empty()) 
-    {
-        return texture; // Empty path, return unloaded texture
-    }
 
-    // Construct full path
-    std::filesystem::path full_path;
-
-    // Check if the texture path is absolute or relative
-    std::filesystem::path tex_path(texture_path);
-    if (tex_path.is_absolute()) 
-    {
-        full_path = tex_path;
-    }
-    else 
-    {
-        // If relative, combine with model directory
-        full_path = std::filesystem::path(model_directory) / tex_path;
-    }
-
-    // Convert to string and normalize path
-    std::string final_path = full_path.string();
-
-    // Load the image using stb_image
-    texture->data = stbi_load(
-        final_path.c_str(),
-        &texture->width,
-        &texture->height,
-        &texture->channels,
-        0  // 0 = auto-detect channels
-    );
-
-    if (texture->data) 
-    {
-        texture->is_loaded = true;
-        std::cout << "Loaded texture: " << final_path << " ("
-            << texture->width << "x" << texture->height
-            << ", " << texture->channels << " channels)" << std::endl;
-    }
-    else 
-    {
-        std::cerr << "Failed to load texture: " << final_path << std::endl;
-        std::cerr << "stbi_failure_reason: " << stbi_failure_reason() << std::endl;
-    }
-
-    return texture;
+template <typename T>
+void phVkMaterial<T>::vulkanCleanup()
+{
+    // TODO
 }
