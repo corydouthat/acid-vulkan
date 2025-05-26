@@ -1219,7 +1219,7 @@ void phVkEngine<T>::createBackgroundPipelines()
     //    background_pipeline = phVkPipeline(device, phVkPipelineType::COMPUTE, getViewport(), getScissor());
 
     //// Shader modules
-    //background_pipeline.loadComputeShader("../../../../shaders/sky.comp.spv");   // TODO: change
+    //background_pipeline.loadComputeShader("../../../../../acid-vulkan/shaders/sky.comp.spv");   // TODO: change
 
 
     ////// TODO!!
@@ -1235,8 +1235,8 @@ void phVkEngine<T>::createMeshPipelines()
     mesh_pipeline = phVkPipeline(device, phVkPipelineType::GRAPHICS, getViewport(), getScissor());
 
     // Shader modules
-    mesh_pipeline.loadVertexShader("../../../../shaders/colored_triangle_mesh.vert.spv");   // TODO: change
-    mesh_pipeline.loadFragmentShader("../../../../shaders/colored_triangle_mesh.frag.spv"); // TODO: change
+    mesh_pipeline.loadVertexShader("../../../../../acid-vulkan/shaders/mesh.vert.spv");   // TODO: change
+    mesh_pipeline.loadFragmentShader("../../../../../acid-vulkan/shaders/mesh.frag.spv"); // TODO: change
 
     // Push constants
     VkPushConstantRange buffer_range{};

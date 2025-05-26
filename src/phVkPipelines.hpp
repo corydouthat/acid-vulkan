@@ -89,7 +89,9 @@ public:
 	// -- Member Data --
 	//
     phVkPipelineType type;
-    VkDevice device;
+    VkDevice device;		// make temporary?
+
+	// TODO: make viewport and scissor temporary for building the pipeline only since we use engine functions to determine these after binding the pipeline?
 	VkViewport viewport;
 	VkRect2D scissor;
 
@@ -185,6 +187,9 @@ public:
 
 phVkPipeline::phVkPipeline() 
 { 
+	pipeline = VK_NULL_HANDLE;
+	layout = VK_NULL_HANDLE;
+
 	clearToDefaults(); 
 }
 

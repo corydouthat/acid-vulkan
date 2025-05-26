@@ -7,9 +7,6 @@ if (POLICY CMP0141)
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
 endif()
 
-# Needed for SDL
-set(CMAKE_BUILD_TYPE RelWithDebInfo)
-
 find_package(Vulkan REQUIRED)
 
 project (acid-vulkan)
@@ -53,5 +50,5 @@ target_link_libraries(acid-vulkan
 )
 
 # Example to include a local main function / testbench
-add_executable(acid-vulkan-testbench "testbench/main.cpp")
-target_link_libraries(acid-vulkan-testbench PRIVATE acid-vulkan)
+#add_executable(acid-vulkan-testbench "testbench/main.cpp")
+#target_link_libraries(acid-vulkan-testbench PRIVATE acid-vulkan)

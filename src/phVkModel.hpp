@@ -61,12 +61,14 @@ public:
     AllocatedBuffer vertex_buffer;
     VkDeviceAddress vertex_buffer_address;
 
+    // Constructor + Destructor
+    phVkMesh();
+    ~phVkMesh() { vulkanCleanup(); }
+
     // Functions
     void processMesh(const aiMesh* mesh, const aiScene* scene);
     void initVulkan(phVkEngine<T>* engine);
     void vulkanCleanup();
-
-    ~phVkMesh() { vulkanCleanup(); }
 };
 
 
@@ -90,6 +92,16 @@ struct phVkModel
 
 	ArrayList<phVkMeshSet<T>> sets;	// Mesh sets
 };
+
+
+template <typename T>
+phVkMesh<T>::phVkMesh<T>()
+{
+    engine = nullptr;
+    index_buffer = {};
+    vertex_buffer = {};
+    vertex_buffer_address = 0;
+}
 
 
 template <typename T>
@@ -215,6 +227,11 @@ void phVkMesh<T>::initVulkan(phVkEngine<T>* engine)
 template <typename T>
 void phVkMesh<T>::vulkanCleanup()
 {
-    engine->destroyBuffer(index_buffer);
-    engine->destroyBuffer(vertex_buffer);
+    if (!engine)
+        return;
+    
+    if (index_buffer.buffer)
+        engine->destroyBuffer(index_buffer);
+    if (vertex_buffer.buffer)
+        engine->destroyBuffer(vertex_buffer);
 }

@@ -76,7 +76,7 @@ void phVkScene<T>::load(std::string path)
     // Note: index may not match Assimp index if multiple files have been loaded into the scene
     for (unsigned int i = 0; i < scene->mNumMeshes; i++)
     {
-        int mesh = meshes.push(phVkMesh<T>());
+        int mesh = meshes.pushEmplace();
         meshes[mesh].processMesh(scene->mMeshes[i], scene);
     }
 
@@ -84,7 +84,7 @@ void phVkScene<T>::load(std::string path)
     // Note: index may not match Assimp index if multiple files have been loaded into the scene
     for (unsigned int i = 0; i < scene->mNumMaterials; i++)
     {
-        int mat = materials.push(phVkMaterial<T>());
+        int mat = materials.pushEmplace();
         materials[mat].processMaterial(scene->mMaterials[i], scene, model_directory);
     }
 
