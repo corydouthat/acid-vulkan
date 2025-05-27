@@ -21,7 +21,7 @@
 enum class phVkPipelineType
 {
 	NONE = 0,
-	COMPUTEE = 1,
+	COMPUTE = 1,
 	GRAPHICS = 2,
 	//RAY_TRACING = 3,
 };
@@ -458,79 +458,118 @@ bool phVkPipeline::createLayout()
 
 bool phVkPipeline::createPipeline()
 {
-	if (pipeline)
+	if (pipeline && type != phVkPipelineType::NONE)
 		return false;
 
 	// -- Create Layout --
 	createLayout();
 
-	// Viewport state
-	// TODO: add support for multiple viewports/scissors
-	VkPipelineViewportStateCreateInfo viewport_state_info = {};
-	viewport_state_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-	viewport_state_info.pNext = nullptr;
-	//viewport_state_info.flags;
-	viewport_state_info.viewportCount = 1;	// TODO: add support for multiple
-	viewport_state_info.pViewports = &viewport;
-	viewport_state_info.scissorCount = 1;	// TODO: add support for multiple
-	viewport_state_info.pScissors = &scissor;
-
-	// Color blending
-	VkPipelineColorBlendStateCreateInfo color_blending_info = {};
-	color_blending_info.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-	color_blending_info.pNext = nullptr;
-	//color_blending_info.flags;
-	color_blending_info.logicOpEnable = VK_FALSE;	// TODO: implement for transparent
-	color_blending_info.logicOp = VK_LOGIC_OP_COPY;
-	color_blending_info.attachmentCount = 1;		// TODO: add support for multiple
-	color_blending_info.pAttachments = &color_blend_attachment;
-	//color_blending_info.blendConstants[4];
-
-	// Vertex input state
-	// TODO: when is this needed?
-	VkPipelineVertexInputStateCreateInfo vertex_input_info = {};
-	vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	//vertex_input_info.pNext = nullptr;
-	//vertex_input_info.flags = 0;
-	//vertex_input_info.vertexBindingDescriptionCount = 0;
-	//vertex_input_info.pVertexBindingDescriptions = nullptr;
-	//vertex_input_info.vertexAttributeDescriptionCount = 0;
-	//vertex_input_info.pVertexAttributeDescriptions = nullptr;
-
-	// Dynamic rendering
-	// TODO: update to support multiple
-	VkDynamicState state[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
-
-	VkPipelineDynamicStateCreateInfo dynamic_info = {
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
-	dynamic_info.pDynamicStates = &state[0];
-	dynamic_info.dynamicStateCount = 2;
+	VkResult result;
 
 	// Pipeline create info
-	VkGraphicsPipelineCreateInfo pipeline_info = {};
-	pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-	pipeline_info.pNext = &render_info;	// Connect render info extension
-	//pipeline_info.flags = 0;
-	pipeline_info.stageCount = (uint32_t)shader_stages.getCount();
-	pipeline_info.pStages = shader_stages.getData();
-	pipeline_info.pVertexInputState = &vertex_input_info;
-	pipeline_info.pInputAssemblyState = &input_assembly_info;
-	//pipeline_info.pTessellationState = nullptr;
-	pipeline_info.pViewportState = &viewport_state_info;
-	pipeline_info.pRasterizationState = &rasterizer_info;
-	pipeline_info.pMultisampleState = &multisampling_info;
-	pipeline_info.pDepthStencilState = &depth_stencil_info;
-	pipeline_info.pColorBlendState = &color_blending_info;
-	pipeline_info.pDynamicState = &dynamic_info;
-	pipeline_info.layout = layout;
-	//pipeline_info.renderPass = 0;
-	//pipeline_info.subpass = 0;
-	//pipeline_info.basePipelineHandle = VK_NULL_HANDLE;
-	//pipeline_info.basePipelineIndex = -1;
+	switch (type)
+	{
+		case phVkPipelineType::COMPUTE:
+		{
+			// -- Compute Create Info --
+			VkComputePipelineCreateInfo pipeline_info = {};
+			pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+			pipeline_info.pNext = nullptr;			// No render info extension for compute
+			//pipeline_info.flags = 0;
+			pipeline_info.stage = shader_stages[0];	// Only one stage for compute
+			pipeline_info.layout = layout;
+			//pipeline_info.basePipelineHandle = VK_NULL_HANDLE;
+			//pipeline_info.basePipelineIndex = -1;
 
-	if (vkCreateGraphicsPipelines(
-		device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &pipeline)
-		!= VK_SUCCESS) 
+			result = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, 
+				&pipeline_info, nullptr, &pipeline);
+
+			break;
+		}
+
+		case phVkPipelineType::GRAPHICS:
+		{
+			// Viewport state
+// TODO: add support for multiple viewports/scissors
+			VkPipelineViewportStateCreateInfo viewport_state_info = {};
+			viewport_state_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+			viewport_state_info.pNext = nullptr;
+			//viewport_state_info.flags;
+			viewport_state_info.viewportCount = 1;	// TODO: add support for multiple
+			viewport_state_info.pViewports = &viewport;
+			viewport_state_info.scissorCount = 1;	// TODO: add support for multiple
+			viewport_state_info.pScissors = &scissor;
+
+			// Color blending
+			VkPipelineColorBlendStateCreateInfo color_blending_info = {};
+			color_blending_info.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+			color_blending_info.pNext = nullptr;
+			//color_blending_info.flags;
+			color_blending_info.logicOpEnable = VK_FALSE;	// TODO: implement for transparent
+			color_blending_info.logicOp = VK_LOGIC_OP_COPY;
+			color_blending_info.attachmentCount = 1;		// TODO: add support for multiple
+			color_blending_info.pAttachments = &color_blend_attachment;
+			//color_blending_info.blendConstants[4];
+
+			// Vertex input state
+			// TODO: when is this needed?
+			VkPipelineVertexInputStateCreateInfo vertex_input_info = {};
+			vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+			//vertex_input_info.pNext = nullptr;
+			//vertex_input_info.flags = 0;
+			//vertex_input_info.vertexBindingDescriptionCount = 0;
+			//vertex_input_info.pVertexBindingDescriptions = nullptr;
+			//vertex_input_info.vertexAttributeDescriptionCount = 0;
+			//vertex_input_info.pVertexAttributeDescriptions = nullptr;
+
+			// Dynamic rendering
+			// TODO: update to support multiple
+			VkDynamicState state[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+
+			VkPipelineDynamicStateCreateInfo dynamic_info = {
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
+			dynamic_info.pDynamicStates = &state[0];
+			dynamic_info.dynamicStateCount = 2;
+
+
+			// -- Graphics Create Info --
+			VkGraphicsPipelineCreateInfo pipeline_info = {};
+			pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+			pipeline_info.pNext = &render_info;	// Connect render info extension
+			//pipeline_info.flags = 0;
+			pipeline_info.stageCount = (uint32_t)shader_stages.getCount();
+			pipeline_info.pStages = shader_stages.getData();
+			pipeline_info.pVertexInputState = &vertex_input_info;
+			pipeline_info.pInputAssemblyState = &input_assembly_info;
+			//pipeline_info.pTessellationState = nullptr;
+			pipeline_info.pViewportState = &viewport_state_info;
+			pipeline_info.pRasterizationState = &rasterizer_info;
+			pipeline_info.pMultisampleState = &multisampling_info;
+			pipeline_info.pDepthStencilState = &depth_stencil_info;
+			pipeline_info.pColorBlendState = &color_blending_info;
+			pipeline_info.pDynamicState = &dynamic_info;
+			pipeline_info.layout = layout;
+			//pipeline_info.renderPass = 0;
+			//pipeline_info.subpass = 0;
+			//pipeline_info.basePipelineHandle = VK_NULL_HANDLE;
+			//pipeline_info.basePipelineIndex = -1;
+
+			result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1,
+				&pipeline_info, nullptr, &pipeline);
+
+			break;
+		}
+
+		// TODO: ray tracing
+
+		default:
+		{
+			std::cout << "Invalid pipeline type: " << (int)type << std::endl;
+			return false;
+		}
+	}
+
+	if (result != VK_SUCCESS) 
 	{
 		std::cout << "Failed to create pipeline" << std::endl;
 		return false;

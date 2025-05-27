@@ -637,34 +637,36 @@ void phVkEngine<T>::drawImgui(VkCommandBuffer cmd, VkImageView target_image_view
 template <typename T>
 void phVkEngine<T>::drawBackground(VkCommandBuffer cmd)
 {
-    //// TODO: temporary
-    //Vec4<T> compute_push_constants[4];
-    //compute_push_constants[0] = Vec4<T>(1, 0, 0, 0);
-    //compute_push_constants[1] = Vec4<T>(0, 1, 0, 0);
-    //compute_push_constants[2] = Vec4<T>(0, 0, 1, 0);
-    //compute_push_constants[3] = Vec4<T>(0, 0, 0, 1);
+    // TODO: temporary
+    Vec4<T> compute_push_constants[4];
+    compute_push_constants[0] = Vec4<T>(0.1, 0.2, 0.4, 0.97);
+    compute_push_constants[1] = Vec4<T>(0, 0, 0, 0);
+    compute_push_constants[2] = Vec4<T>(0, 0, 0, 0);
+    compute_push_constants[3] = Vec4<T>(0, 0, 0, 0);
 
-    //// -- Bind Pipeline --
-    //vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, background_pipeline.pipeline);
+    // -- Bind Pipeline --
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, background_pipeline.pipeline);
 
-    //// -- Set Viewport and Scissor --
-    //// Set after each pipeline bind (with exceptions)
-    //vkCmdSetViewport(cmd, 0, 1, &getViewport());
-    //vkCmdSetScissor(cmd, 0, 1, &getScissor());
+    // -- Set Viewport and Scissor --
+    // Set after each pipeline bind (with exceptions)
+    VkViewport viewport = getViewport();
+    VkRect2D scissor = getScissor();
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-    //// -- Bind Descriptor Sets --
-    //vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, background_pipeline.layout,
-    //    0, 1, &draw_image_descriptors, 0, nullptr);
+    // -- Bind Descriptor Sets --
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, background_pipeline.layout,
+        0, 1, &draw_image_descriptors, 0, nullptr);
 
-    //// -- Push Constants --
-    //vkCmdPushConstants(cmd, background_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
-    //    sizeof(compute_push_constants), &compute_push_constants);
+    // -- Push Constants --
+    vkCmdPushConstants(cmd, background_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+        sizeof(compute_push_constants), &compute_push_constants);
 
-    //// -- Dispatch --
-    //// 16x16 workgroup
-    //// TODO: confirm getDrawImageExtent() - vkguide.dev uses getWindowExtent()
-    //vkCmdDispatch(cmd, std::ceil(getDrawImageExtent().width / 16.0),
-    //    std::ceil(getDrawImageExtent().height / 16.0), 1);
+    // -- Dispatch --
+    // 16x16 workgroup
+    // TODO: confirm getDrawImageExtent() - vkguide.dev uses getWindowExtent()
+    vkCmdDispatch(cmd, std::ceil(getDrawImageExtent().width / 16.0),
+        std::ceil(getDrawImageExtent().height / 16.0), 1);
 }
 
 
@@ -1265,16 +1267,28 @@ VkRect2D phVkEngine<T>::getScissor()
 template <typename T>
 void phVkEngine<T>::createBackgroundPipelines()
 {
-    //if (background_pipeline.device == 0)
-    //    background_pipeline = phVkPipeline(device, phVkPipelineType::COMPUTE, getViewport(), getScissor());
+    if (background_pipeline.device == 0)
+        background_pipeline = phVkPipeline(device, phVkPipelineType::COMPUTE, getViewport(), getScissor());
 
-    //// Shader modules
-    //background_pipeline.loadComputeShader("../../../../../acid-vulkan/shaders/sky.comp.spv");   // TODO: change
+    // Shader modules
+    background_pipeline.loadComputeShader("../../../../../acid-vulkan/shaders/gradient_color.comp.spv");   // TODO: change
 
+    // Push constants
+    VkPushConstantRange background_push_range{};
+    background_push_range.offset = 0;
+    background_push_range.size = 4 * sizeof(Vec4<T>);   // TODO: temporary
+    background_push_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-    ////// TODO!!
+	background_pipeline.addPushConstantRange(background_push_range);
 
+    // Descriptor sets
+    background_pipeline.addDescriptorSetLayout(draw_image_descriptor_layout);
 
+    // -- Build the pipeline --
+    background_pipeline.createPipeline();
+
+    // Shader modules have been compiled into the pipeline and are no longer needed
+    background_pipeline.destroyShaderModules();
 }
 
 
@@ -1282,19 +1296,19 @@ template <typename T>
 void phVkEngine<T>::createMeshPipelines()
 {
     if (mesh_pipeline.device == 0)
-    mesh_pipeline = phVkPipeline(device, phVkPipelineType::GRAPHICS, getViewport(), getScissor());
+        mesh_pipeline = phVkPipeline(device, phVkPipelineType::GRAPHICS, getViewport(), getScissor());
 
     // Shader modules
     mesh_pipeline.loadVertexShader("../../../../../acid-vulkan/shaders/mesh.vert.spv");   // TODO: change
     mesh_pipeline.loadFragmentShader("../../../../../acid-vulkan/shaders/mesh.frag.spv"); // TODO: change
 
     // Push constants
-    VkPushConstantRange buffer_range{};
-    buffer_range.offset = 0;
-    buffer_range.size = sizeof(GPUDrawPushConstants);
-    buffer_range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    VkPushConstantRange mesh_push_range{};
+    mesh_push_range.offset = 0;
+    mesh_push_range.size = sizeof(GPUDrawPushConstants);
+    mesh_push_range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-    mesh_pipeline.addPushConstantRange(buffer_range);
+    mesh_pipeline.addPushConstantRange(mesh_push_range);
 
     // Descriptor sets
     // TODO: confirm this works - doesn't seem like vkguide.dev adds the gpu_scene_data_descriptor_layout

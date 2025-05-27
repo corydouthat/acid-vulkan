@@ -31,7 +31,7 @@ class phVkEngine;
 template <typename T = float>
 struct phVkVertex
 {
-    // TODO: InterleavE uv's to better match shader alignment on GPU, like this:
+    // TODO: Interleave uv's to match shader alignment, and supposedly better match GPU memory?
     //Vec3f position;
     //float uv_x;
     //Vec3f normal;
@@ -41,6 +41,7 @@ struct phVkVertex
 	Vec3<T> p;		// Position
 	Vec3<T> n;		// Normal vector
 	Vec2<T> uv;		// Texture coordinate
+	Vec4<T> c;	    // Color (optional, for vertex colors)
 };
 
 
