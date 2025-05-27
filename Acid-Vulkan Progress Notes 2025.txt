@@ -1,7 +1,14 @@
 
+Issues:
+- Some triangles not visible - likely vertex order
+- Resizing window causes crash if enlarging, but ok if going smaller
+- Resizing window causes image to scale instead of crop
+- Object not centered
+- Validation layer error related to descriptors - may be timing related because it doesn't happen when loading the larger scene? But also that scene just doesn't seem to render
 
-Later:
-Finish background shader / background draw functions
+
+TODO:
+Finish material buffers / descriptors
 GUI
 Connect physics transforms
 User input callbacks
