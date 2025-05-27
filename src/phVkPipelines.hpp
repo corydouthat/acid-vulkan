@@ -180,17 +180,15 @@ public:
     bool createPipeline();
 
 	// Data Management
-	void clearToDefaults();
+	void reset();
+	void setDefaults();
 	void destroyShaderModules();
 };
 
 
 phVkPipeline::phVkPipeline() 
 { 
-	pipeline = VK_NULL_HANDLE;
-	layout = VK_NULL_HANDLE;
-
-	clearToDefaults(); 
+	setDefaults();
 }
 
 
@@ -205,7 +203,7 @@ phVkPipeline::phVkPipeline(VkDevice device, phVkPipelineType type,
 
 phVkPipeline::~phVkPipeline() 
 { 
-	clearToDefaults();
+	reset();
 }
 
 
@@ -463,6 +461,9 @@ bool phVkPipeline::createPipeline()
 	if (pipeline)
 		return false;
 
+	// -- Create Layout --
+	createLayout();
+
 	// Viewport state
 	// TODO: add support for multiple viewports/scissors
 	VkPipelineViewportStateCreateInfo viewport_state_info = {};
@@ -541,7 +542,10 @@ bool phVkPipeline::createPipeline()
 }
 
 
-void phVkPipeline::clearToDefaults()
+
+
+
+void phVkPipeline::reset()
 {
 	destroyShaderModules();
 	
@@ -551,6 +555,12 @@ void phVkPipeline::clearToDefaults()
 	if (pipeline)
 		vkDestroyPipeline(device, pipeline, nullptr);
 
+	setDefaults();
+}
+
+
+void phVkPipeline::setDefaults()
+{
 	type = phVkPipelineType::NONE;
 	device = 0;
 	viewport = VkViewport{};
@@ -588,6 +598,7 @@ void phVkPipeline::clearToDefaults()
 
 	color_blend_attachment = {};
 }
+
 
 
 void phVkPipeline::destroyShaderModules()

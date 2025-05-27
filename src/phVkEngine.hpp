@@ -108,7 +108,7 @@ public:
 
     // PUBLIC FUNCTIONS
 
-    phVkEngine() { ; }
+    phVkEngine() { ; }      // TODO?
     ~phVkEngine() { cleanup(); }
 
     // -- Init Functions --
@@ -146,6 +146,7 @@ private:
     // PRIVATE FUNCTIONS
 
     // -- Run Functions --
+	void updateScene();
     void draw();
     void renderImGui();
     void drawImgui(VkCommandBuffer cmd, VkImageView target_image_view);
@@ -252,7 +253,7 @@ void phVkEngine<T>::run()
         }
 
         // Send SDL event to imgui for handling
-        ImGui_ImplSDL3_ProcessEvent(&sdl_event);
+        //ImGui_ImplSDL3_ProcessEvent(&sdl_event);
     }
 
 
@@ -262,6 +263,10 @@ void phVkEngine<T>::run()
         resizeSwapchain();
         resize_requested = false;
     }
+
+
+    // -- Update Scene Data --
+    updateScene();
 
 
     // -- Draw --
@@ -282,7 +287,7 @@ AllocatedBuffer phVkEngine<T>::createBuffer(size_t alloc_size, VkBufferUsageFlag
     VmaAllocationCreateInfo vmaallocInfo = {};
     vmaallocInfo.usage = memory_usage;
     vmaallocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
-    AllocatedBuffer new_buffer;
+    AllocatedBuffer new_buffer {};
 
     // Allocate the buffer
     VK_CHECK(vmaCreateBuffer(allocator, &buffer_info, &vmaallocInfo,
@@ -348,8 +353,8 @@ void phVkEngine<T>::cleanup()
     destroyBuffer(scene_data_buffer);
 
     // Pipelines
-	mesh_pipeline.clearToDefaults();
-	background_pipeline.clearToDefaults();
+	mesh_pipeline.reset();
+	background_pipeline.reset();
     // TODO: material pipelines
 
     // Destroy descriptor set objects
@@ -401,11 +406,36 @@ void phVkEngine<T>::cleanup()
 
 
 template <typename T>
+void phVkEngine<T>::updateScene()
+{
+	scene_data.ambient_color =  Vec4<T>(0.1f, 0.1f, 0.1f, 1.0f);        // TODO
+    scene_data.sunlight_color = Vec4<T>(0.8f, 0.8f, 0.8f, 1.0f);        // TODO
+	scene_data.sunlight_direction = Vec4<T>(0.0f, -1.0f, 0.0f, 1.0f);   // TODO, and could this be a Vec3?
+
+    // Camera view
+    scene_data.view = cameras[active_camera].getLookAt();
+
+    // Camera projection
+    scene_data.proj = Mat4f::projPerspective(
+		1.22173f,           // 70 degrees FOV in radians
+        (float)getWindowExtent().width / (float)getWindowExtent().height,
+        10000.f, 0.1f);     // Reverse depth help with precision issues
+
+    // invert the Y direction on projection matrix so that we are more similar
+    // to opengl and gltf axis
+    scene_data.proj[1][1] *= -1;     // TODO: make configurable?
+
+    scene_data.view_proj = scene_data.proj * scene_data.view;
+    
+}
+
+
+template <typename T>
 void phVkEngine<T>::draw()
 {
     // -- Render GUI --
     // Does not draw to a Vulkan impage yet
-    renderImGui();
+    //renderImGui();
 
 
     // -- Last Frame Wrap-up --
@@ -413,13 +443,11 @@ void phVkEngine<T>::draw()
     VK_CHECK(vkWaitForFences(device, 1, &getCurrentFrame().render_fence, VK_TRUE, 1000000000));
 
     // Destroy frame's old uniform buffer(s) and descriptor set(s)
-    // TODO: change this to only make the buffers once and not re-allocate every frame
+    // TODO: finish changing this to only make the buffers once and not re-allocate every frame
     // Is this because there are separate descriptor sets allocated from the pool for each mesh object every frame?
-    destroyBuffer(scene_data_buffer);
+    //destroyBuffer(scene_data_buffer);
     getCurrentFrame().frame_descriptors.clearPools(device);
-
-    // TODO: or can we re-allocate the buffers / pools here (currently in drawGeometry)
-    // Also descriptor set?
+    // TODO: descriptor sets are currently re-allocated in drawMesh?
 
     // Acquire an image from the swap chain
     uint32_t image_index;
@@ -494,7 +522,7 @@ void phVkEngine<T>::draw()
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
     // Draw ImGui
-    drawImgui(cmd, swapchain_image_views[image_index]);
+    //drawImgui(cmd, swapchain_image_views[image_index]);
 
 
     // -- Present Layout --
@@ -1073,7 +1101,7 @@ void phVkEngine<T>::initPipelines()
 template<typename T>
 void phVkEngine<T>::initBuffers()
 {
-    AllocatedBuffer scene_data_buffer = createBuffer(sizeof(GPUSceneData<T>),
+    scene_data_buffer = createBuffer(sizeof(GPUSceneData<T>),
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 }
 

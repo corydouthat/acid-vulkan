@@ -105,7 +105,7 @@ VkPipelineShaderStageCreateInfo phVkDefaultShaderStageCreateInfo()
     //temp.flags;
     //temp.stage;
     //temp.module;
-    //temp.pName;
+    temp.pName = "main";
     //temp.pSpecializationInfo;
 
     return temp;
