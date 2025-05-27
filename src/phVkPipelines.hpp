@@ -571,15 +571,15 @@ void phVkPipeline::setDefaults()
 	layout_create_info = {};
 	layout_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 
-	push_constant_ranges.clear();
+	push_constant_ranges.free();
 
-	descriptor_set_layouts.clear();
+	descriptor_set_layouts.free();
 
 	compute_shader_index = -1;
 	vertex_shader_index = -1;
 	fragment_shader_index = -1;
 
-	color_attachment_formats.clear();
+	color_attachment_formats.free();
 
 	input_assembly_info = {};
 	input_assembly_info.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -608,7 +608,7 @@ void phVkPipeline::destroyShaderModules()
 		vkDestroyShaderModule(device, shader_stages[i].module, nullptr);
 	}
 
-	shader_stages.clear();
+	shader_stages.free();
 }
 
 

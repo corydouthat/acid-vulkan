@@ -76,7 +76,8 @@ void phVkScene<T>::load(std::string path)
     // Note: index may not match Assimp index if multiple files have been loaded into the scene
     for (unsigned int i = 0; i < scene->mNumMeshes; i++)
     {
-        int mesh = meshes.pushEmplace();
+        int mesh = meshes.push(phVkMesh<T>());  
+        //int mesh = meshes.pushEmplace();      // TODO: confirming if this causes memory access violation when deleting?
         meshes[mesh].processMesh(scene->mMeshes[i], scene);
     }
 

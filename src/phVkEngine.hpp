@@ -90,7 +90,8 @@ private:
     VkDescriptorSet draw_image_descriptors;
     VkDescriptorSetLayout gpu_scene_data_descriptor_layout;
     VkDescriptorSetLayout draw_image_descriptor_layout;
-    VkDescriptorSetLayout single_image_descriptor_layout;
+    VkDescriptorSetLayout material_data_descriptor_layout;
+    //VkDescriptorSetLayout single_image_descriptor_layout;
 
     // Buffer
     AllocatedBuffer scene_data_buffer;
@@ -344,64 +345,74 @@ void phVkEngine<T>::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& f
 template <typename T>
 void phVkEngine<T>::cleanup()
 {
-	// -- Destroy resources in reverse order of creation --
-
-    // Scene
-    scenes.clear(); // Rely on destructors to detroy buffers
-
-    // Scene data buffer
-    destroyBuffer(scene_data_buffer);
-
-    // Pipelines
-	mesh_pipeline.reset();
-	background_pipeline.reset();
-    // TODO: material pipelines
-
-    // Destroy descriptor set objects
-    for (int i = 0; i < FRAME_BUFFER_COUNT; i++)
+    if (is_initialized)
     {
-        frames[i].frame_descriptors.destroyPools(device);
+        // Wait for GPU to finish
+        vkDeviceWaitIdle(device);
+
+        // -- Destroy resources in reverse order of creation --
+
+        // Scene
+        scenes.free(); // Rely on destructors to detroy buffers
+
+        // Scene data buffer
+        destroyBuffer(scene_data_buffer);
+
+        // Pipelines
+        mesh_pipeline.reset();
+        background_pipeline.reset();
+        // TODO: material pipelines
+
+        // Destroy descriptor set objects
+        for (int i = 0; i < FRAME_BUFFER_COUNT; i++)
+        {
+            frames[i].frame_descriptors.destroyPools(device);
+        }
+        global_descriptor_allocator.destroyPools(device);
+        vkDestroyDescriptorSetLayout(device, draw_image_descriptor_layout, nullptr);
+        //vkDestroyDescriptorSetLayout(device, single_image_descriptor_layout, nullptr);
+        vkDestroyDescriptorSetLayout(device, material_data_descriptor_layout, nullptr);
+        vkDestroyDescriptorSetLayout(device, gpu_scene_data_descriptor_layout, nullptr);
+
+        // Destroy sync objects
+        vkDestroyFence(device, imm_fence, nullptr);
+        for (int i = 0; i < FRAME_BUFFER_COUNT; i++)
+        {
+            vkDestroyFence(device, frames[i].render_fence, nullptr);
+            vkDestroySemaphore(device, frames[i].render_semaphore, nullptr);
+            vkDestroySemaphore(device, frames[i].swapchain_semaphore, nullptr);
+        }
+
+        // Destroy command pools
+        vkDestroyCommandPool(device, imm_command_pool, nullptr);
+        for (int i = 0; i < FRAME_BUFFER_COUNT; i++)
+        {
+            // Note: destroying the command pool also destroys buffers allocated from it
+            vkDestroyCommandPool(device, frames[i].command_pool, nullptr);
+        }
+
+        // Destroy swapchain images
+        vkDestroyImageView(device, depth_image.view, nullptr);
+        vmaDestroyImage(allocator, depth_image.image, depth_image.allocation);
+        vkDestroyImageView(device, draw_image.view, nullptr);
+        vmaDestroyImage(allocator, draw_image.image, draw_image.allocation);
+
+        // Destroy Vulkan configs (de-init Vulkan)
+        vmaDestroyAllocator(allocator);
+        destroySwapchain();
+        vkDestroySurfaceKHR(instance, surface, nullptr);    // TODO - out of order?
+        vkDestroyDevice(device, nullptr);
+        vkb::destroy_debug_utils_messenger(instance, debug_messenger);
+        vkDestroyInstance(instance, nullptr);
+
+        // Destroy the window
+        SDL_DestroyWindow(window);
+
+        // Quit SDL
+        SDL_Quit();
+
+        is_initialized = false;
     }
-    global_descriptor_allocator.destroyPools(device);
-    vkDestroyDescriptorSetLayout(device, draw_image_descriptor_layout, nullptr);
-    vkDestroyDescriptorSetLayout(device, single_image_descriptor_layout, nullptr);
-    vkDestroyDescriptorSetLayout(device, gpu_scene_data_descriptor_layout, nullptr);
-
-    // Destroy sync objects
-    vkDestroyFence(device, imm_fence, nullptr);
-    for (int i = 0; i < FRAME_BUFFER_COUNT; i++)
-    {
-        vkDestroyFence(device, frames[i].render_fence, nullptr);
-        vkDestroySemaphore(device, frames[i].render_semaphore, nullptr);
-        vkDestroySemaphore(device, frames[i].swapchain_semaphore, nullptr);
-    }
-
-    // Destroy command pools
-    vkDestroyCommandPool(device, imm_command_pool, nullptr);
-    for (int i = 0; i < FRAME_BUFFER_COUNT; i++) 
-    {
-        // Note: destroying the command pool also destroys buffers allocated from it
-        vkDestroyCommandPool(device, frames[i].command_pool, nullptr);
-    }
-
-    // Destroy swapchain images
-    vkDestroyImageView(device, depth_image.view, nullptr);
-    vmaDestroyImage(allocator, depth_image.image, depth_image.allocation);
-    vkDestroyImageView(device, draw_image.view, nullptr);
-    vmaDestroyImage(allocator, draw_image.image, draw_image.allocation);
-
-    // Destroy Vulkan configs (de-init Vulkan)
-    vmaDestroyAllocator(allocator);
-    vkDestroySurfaceKHR(instance, surface, nullptr);    // TODO - out of order?
-    vkDestroyDevice(device, nullptr);
-    vkb::destroy_debug_utils_messenger(instance, debug_messenger);
-    vkDestroyInstance(instance, nullptr);
-
-    // Destroy the window
-	SDL_DestroyWindow(window);
-	
-    // Quit SDL
-	SDL_Quit();
 }
 
 
@@ -504,7 +515,7 @@ void phVkEngine<T>::draw()
     // -- Copy Draws to Swapchain --
     // Transition draw image to transfer layout
     vkutil::transition_image(cmd, draw_image.image,
-        VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     // Transition swapchain image to transfer layout
     vkutil::transition_image(cmd, swapchain_images[image_index],
         VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -911,6 +922,7 @@ void phVkEngine<T>::initSwapchain()
     img_alloc_info.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     // Allocate and create the image
+    // TODO: any reason to not just use createBuffer()?
     vmaCreateImage(allocator, &img_info, &img_alloc_info, &draw_image.image, 
         &draw_image.allocation, nullptr);
 
@@ -939,6 +951,7 @@ void phVkEngine<T>::initSwapchain()
 	dimg_info.usage = depth_image_usages;
 
     // Allocate and create the image
+    // TODO: Any reason to not just use createBuffer()
     vmaCreateImage(allocator, &dimg_info, &img_alloc_info, &depth_image.image, 
         &depth_image.allocation, nullptr);
 
@@ -1044,20 +1057,29 @@ void phVkEngine<T>::initDescriptors()
         draw_image_descriptor_layout = builder.build(device,
             VK_SHADER_STAGE_COMPUTE_BIT);
     }
-	// Descriptor set layout - GPU scene data
+	// Descriptor set layout - mesh pipeline scene data
     {
         phVkDescriptorLayoutBuilder builder;
         builder.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
         gpu_scene_data_descriptor_layout = builder.build(device,
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
     }
-	// Descriptor set layout - single image
+    // Descriptor set layout - mesh pipeline material data
     {
         phVkDescriptorLayoutBuilder builder;
-        builder.addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-        single_image_descriptor_layout = builder.build(device,
-            VK_SHADER_STAGE_FRAGMENT_BIT);
+        builder.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);   // Material data
+        builder.addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);   // TODO: color texture
+        builder.addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);   // TODO: metal rough texture
+        material_data_descriptor_layout = builder.build(device,
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
     }
+	//// Descriptor set layout - single image
+ //   {
+ //       phVkDescriptorLayoutBuilder builder;
+ //       builder.addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+ //       single_image_descriptor_layout = builder.build(device,
+ //           VK_SHADER_STAGE_FRAGMENT_BIT);
+ //   }
 
     // Allocate descriptor set - compute draw image
     draw_image_descriptors = global_descriptor_allocator.allocate(device, draw_image_descriptor_layout);
@@ -1277,7 +1299,7 @@ void phVkEngine<T>::createMeshPipelines()
     // Descriptor sets
     // TODO: confirm this works - doesn't seem like vkguide.dev adds the gpu_scene_data_descriptor_layout
     mesh_pipeline.addDescriptorSetLayout(gpu_scene_data_descriptor_layout);
-    mesh_pipeline.addDescriptorSetLayout(single_image_descriptor_layout);
+    mesh_pipeline.addDescriptorSetLayout(material_data_descriptor_layout);
 
     // Input topology
     mesh_pipeline.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
