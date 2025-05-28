@@ -31,17 +31,17 @@ class phVkEngine;
 template <typename T = float>
 struct phVkVertex
 {
-    // TODO: Interleave uv's to match shader alignment, and supposedly better match GPU memory?
-    //Vec3f position;
-    //float uv_x;
-    //Vec3f normal;
-    //float uv_y;
-    //Vec4f color;
+    // Interleave uv's to match shader alignment, and supposedly better match GPU memory?
+    Vec3<T> p;
+    float uv_x;
+    Vec3<T> n;
+    float uv_y;
+    Vec4<T> c;
 
-	Vec3<T> p;		// Position
-	Vec3<T> n;		// Normal vector
-	Vec2<T> uv;		// Texture coordinate
-	Vec4<T> c;	    // Color (optional, for vertex colors)
+	//Vec3<T> p;		// Position
+	//Vec3<T> n;		// Normal vector
+	//Vec2<T> uv;		// Texture coordinate
+	//Vec4<T> c;	    // Color (optional, for vertex colors)
 };
 
 
@@ -105,6 +105,9 @@ phVkMesh<T>::phVkMesh<T>()
 }
 
 
+// Note: assimp will generate duplicate vertices in order to support
+//       multiple texture coordinates, normals, etc.
+//       As an example, a cube resulted in 24 vertices.
 template <typename T>
 void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene)
 {
@@ -127,15 +130,30 @@ void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene)
         }
 
         // Texture coordinates
-        if (mesh->HasTextureCoords(i))
+        if (mesh->HasTextureCoords(0))
         {
             // TODO: add support for AI_MAX_NUMBER_OF_TEXTURECOORDS != 2
-            vertex.uv.x = mesh->mTextureCoords[i]->x;
-            vertex.uv.y = mesh->mTextureCoords[i]->y;
+            // TODO: add support for additional texture coordinate sets
+            vertex.uv_x = mesh->mTextureCoords[0]->x;
+            vertex.uv_y = mesh->mTextureCoords[0]->y;
         }
         else
         {
-            vertex.uv = Vec2<T>(0.0f, 0.0f);
+            vertex.uv_x = vertex.uv_y = 0.0f;// Vec2<T>(0.0f, 0.0f);
+        }
+
+        if (mesh->HasVertexColors(0))
+        {
+			vertex.c = Vec4<T>(
+                mesh->mColors[0][i].r,
+                mesh->mColors[0][i].g,
+                mesh->mColors[0][i].b,
+                mesh->mColors[0][i].a); // First color channel
+		}
+        else
+        {
+            // TODO: add configurable default value
+            vertex.c = Vec4<T>(191.0 / 255.0f, 64.0 / 255.0f, 191.0 / 255.0f, 1.0f);
         }
 
         vertices.push(vertex);
@@ -199,6 +217,9 @@ void phVkMesh<T>::initVulkan(phVkEngine<T>* engine)
 
     // Copy vertex buffer to staging
     memcpy(data, vertices.getData(), vertex_buf_size);
+
+	phVkVertex<T>* temp = (phVkVertex<T>*)data;
+
     // Copy index buffer to staging
     memcpy((char*)data + vertex_buf_size, indices.getData(), index_buf_size);
 

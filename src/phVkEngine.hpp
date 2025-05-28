@@ -419,9 +419,9 @@ void phVkEngine<T>::cleanup()
 template <typename T>
 void phVkEngine<T>::updateScene()
 {
-	scene_data.ambient_color =  Vec4<T>(0.1f, 0.1f, 0.1f, 1.0f);        // TODO
-    scene_data.sunlight_color = Vec4<T>(0.8f, 0.8f, 0.8f, 1.0f);        // TODO
-	scene_data.sunlight_direction = Vec4<T>(0.0f, -1.0f, 0.0f, 1.0f);   // TODO, and could this be a Vec3?
+	scene_data.ambient_color =  Vec4<T>(0.01f, 0.01f, 0.01f, 1.0f);     // TODO
+    scene_data.sunlight_color = Vec4<T>(1.0f, 1.0f, 1.0f, 1.0f);        // TODO
+	scene_data.sunlight_direction = Vec4<T>(-0.5f, -1.0f, 0.0f, 1.0f);  // TODO, and could this be a Vec3?
 
     // Camera view
     scene_data.view = cameras[active_camera].getLookAt();
@@ -748,11 +748,11 @@ void phVkEngine<T>::drawMesh(VkCommandBuffer cmd)
                 vkCmdPushConstants(cmd, mesh_pipeline.layout,
                     VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
 
-                //// TODO TODO TODO
-                //// Bind per-object material set descriptor (slot 1)
-                //// TODO: need to actually create the materials
-                //// TODO: use single_image_descriptor_layout when allocating... 
-                //           the descriptor set to match pipeline config?
+                // TODO TODO TODO
+                // Bind per-object material set descriptor (slot 1)
+                // TODO: need to actually create the materials
+                // TODO: use single_image_descriptor_layout when allocating... 
+                //       the descriptor set to match pipeline config?
                 //vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline.layout, 1, 1,
                 //    &r.material->material_set, 0, nullptr);
 
@@ -761,7 +761,7 @@ void phVkEngine<T>::drawMesh(VkCommandBuffer cmd)
                     0, VK_INDEX_TYPE_UINT32);
 
                 // Vulkan Draw
-                vkCmdDrawIndexed(cmd, scenes[s].meshes[mesh_i].vertices.getCount(), 1, 0, 0, 0);
+                vkCmdDrawIndexed(cmd, scenes[s].meshes[mesh_i].indices.getCount(), 1, 0, 0, 0);
             }
         }
     }
@@ -1299,8 +1299,8 @@ void phVkEngine<T>::createMeshPipelines()
         mesh_pipeline = phVkPipeline(device, phVkPipelineType::GRAPHICS, getViewport(), getScissor());
 
     // Shader modules
-    mesh_pipeline.loadVertexShader("../../../../../acid-vulkan/shaders/mesh.vert.spv");   // TODO: change
-    mesh_pipeline.loadFragmentShader("../../../../../acid-vulkan/shaders/mesh.frag.spv"); // TODO: change
+    mesh_pipeline.loadVertexShader("../../../../acid-vulkan/shaders/mesh_no_mat.vert.spv");   // TODO: change
+    mesh_pipeline.loadFragmentShader("../../../../acid-vulkan/shaders/mesh_no_mat.frag.spv"); // TODO: change
 
     // Push constants
     VkPushConstantRange mesh_push_range{};
@@ -1313,7 +1313,7 @@ void phVkEngine<T>::createMeshPipelines()
     // Descriptor sets
     // TODO: confirm this works - doesn't seem like vkguide.dev adds the gpu_scene_data_descriptor_layout
     mesh_pipeline.addDescriptorSetLayout(gpu_scene_data_descriptor_layout);
-    mesh_pipeline.addDescriptorSetLayout(material_data_descriptor_layout);
+    //mesh_pipeline.addDescriptorSetLayout(material_data_descriptor_layout);
 
     // Input topology
     mesh_pipeline.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
@@ -1322,7 +1322,7 @@ void phVkEngine<T>::createMeshPipelines()
     mesh_pipeline.setPolygonMode(VK_POLYGON_MODE_FILL);
 
     // No backface culling
-    mesh_pipeline.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    mesh_pipeline.setCullMode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE);
 
     // No multisampling
     mesh_pipeline.setMultiSamplingNone();
@@ -1335,6 +1335,7 @@ void phVkEngine<T>::createMeshPipelines()
     // Note: Using reversed depth (near/far) where 1 is near and 0 is far
     //	     This is a common optimization in Vulkan to avoid depth precision issues
     mesh_pipeline.enableDepthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
+    //mesh_pipeline.disableDepthTest();
 
     // Image attachments
     mesh_pipeline.addColorAttachmentFormat(draw_image.format);

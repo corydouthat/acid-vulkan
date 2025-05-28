@@ -35,6 +35,7 @@ bool loadShaderModule(const char* file_path, VkDevice device, VkShaderModule* sh
     // Check if the file was opened successfully
     if (!file.is_open()) 
 	{
+		std::ifstream::iostate state = file.rdstate();
         throw std::runtime_error("Failed to open file: " + std::string(file_path));
 
 		return false;

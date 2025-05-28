@@ -55,10 +55,11 @@ void phVkScene<T>::load(std::string path)
 
     // TODO: make configurable
     const aiScene* scene = importer.ReadFile(path,
-        aiProcess_Triangulate |
-        aiProcess_FlipUVs |
-        aiProcess_CalcTangentSpace |
-        aiProcess_GenNormals);
+        aiProcess_Triangulate |             // Self-explanatory (does allow line and point primitives)
+        /*aiProcess_FlipUVs | */            // Flip to clockwise (ccw is default)
+        aiProcess_CalcTangentSpace |        // Used for things like normal mapping
+        aiProcess_GenNormals |              // Generate vertex normals (only if they don't exist)
+        aiProcess_JoinIdenticalVertices);   // Merge duplicate vertices (but, see note at processMesh)         
 
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
