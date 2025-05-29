@@ -126,6 +126,7 @@ public:
     VkExtent2D getSwapchainExtent();
     VkExtent2D getActualExtent(bool clamp = true);
     VkExtent2D getDrawImageExtent();
+    VkRect2D getRenderArea();
     VkViewport getViewport();
     VkRect2D getScissor();
 
@@ -223,7 +224,8 @@ VkExtent2D phVkEngine<T>::getWindowExtent()
     int width, height;
     SDL_GetWindowSizeInPixels(window, &width, &height);
 
-    return VkExtent2D{ (uint32_t)width, (uint32_t)height };
+    VkExtent2D extent = VkExtent2D{ (uint32_t)width, (uint32_t)height };
+    return extent;
 }
 
 
@@ -419,7 +421,7 @@ void phVkEngine<T>::cleanup()
 template <typename T>
 void phVkEngine<T>::updateScene()
 {
-	scene_data.ambient_color =  Vec4<T>(0.01f, 0.01f, 0.01f, 1.0f);     // TODO
+    scene_data.ambient_color =  Vec4<T>(0.01f, 0.01f, 0.01f, 1.0f);     // TODO
     scene_data.sunlight_color = Vec4<T>(1.0f, 1.0f, 1.0f, 1.0f);        // TODO
 	scene_data.sunlight_direction = Vec4<T>(-0.5f, -1.0f, 0.0f, 1.0f);  // TODO, and could this be a Vec3?
 
@@ -427,9 +429,9 @@ void phVkEngine<T>::updateScene()
     scene_data.view = cameras[active_camera].getLookAt();
 
     // Camera projection
-    scene_data.proj = Mat4f::projPerspective(
+    scene_data.proj = Mat4<T>::projPerspective(
 		1.22173f,           // 70 degrees FOV in radians
-        (float)getWindowExtent().width / (float)getWindowExtent().height,
+        (T)getWindowExtent().width / (T)getWindowExtent().height,
         10000.f, 0.1f);     // Reverse depth help with precision issues
 
     // invert the Y direction on projection matrix so that we are more similar
@@ -520,12 +522,10 @@ void phVkEngine<T>::draw()
     vkutil::transition_image(cmd, swapchain_images[image_index],
         VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-    // Determine actual draw extents
-    VkExtent2D swapchain_extent = getSwapchainExtent();
-
     // Copy draw image into swapchain
     vkutil::copy_image_to_image(cmd, draw_image.image,
-        swapchain_images[image_index], getDrawImageExtent(), swapchain_extent);
+        swapchain_images[image_index], getRenderArea().extent, getSwapchainExtent());
+
 
     // -- GUI Draw --
     // Transition swapchain image to appropriate layout for ImGui
@@ -585,13 +585,11 @@ void phVkEngine<T>::draw()
 
 
     // -- Final Steps --
-    
-    // TODO: remove - this does nothing since the previous check has a 'return'?
-    //if (result == VK_ERROR_OUT_OF_DATE_KHR)
-    //{
-    //    resize_requested = true;
-    //    return;
-    //}
+    if (present_result == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        resize_requested = true;
+        return;
+    }
     
     frame_number++;
 }
@@ -623,7 +621,7 @@ void phVkEngine<T>::drawImgui(VkCommandBuffer cmd, VkImageView target_image_view
     color_attachment.imageView = target_image_view;
 
     VkRenderingInfo render_info = phVkDefaultRenderingInfo();
-    render_info.renderArea = VkRect2D{ VkOffset2D { 0, 0 }, getWindowExtent() };
+    render_info.renderArea = getRenderArea();
     render_info.pColorAttachments = &color_attachment;
 
     vkCmdBeginRendering(cmd, &render_info);
@@ -714,7 +712,7 @@ void phVkEngine<T>::drawMesh(VkCommandBuffer cmd)
     VkRenderingAttachmentInfo depth_attachment = phVkDefaultDepthAttachmentInfo();
     depth_attachment.imageView = depth_image.view;
     VkRenderingInfo render_info = phVkDefaultRenderingInfo();
-    render_info.renderArea = VkRect2D{ VkOffset2D { 0, 0 }, getWindowExtent() };
+    render_info.renderArea = getRenderArea();
     render_info.pColorAttachments = &color_attachment;
     render_info.pDepthAttachment = &depth_attachment;
 
@@ -1214,10 +1212,13 @@ VkExtent2D phVkEngine<T>::getActualExtent(bool clamp)
             static_cast<uint32_t>(height)
         };
 
-        actual_extent.width = std::clamp(actual_extent.width,
-            capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-        actual_extent.height = std::clamp(actual_extent.height,
-            capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+        if (clamp)
+        {
+            actual_extent.width = std::clamp(actual_extent.width,
+                capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+            actual_extent.height = std::clamp(actual_extent.height,
+                capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+        }
 
         return actual_extent;
     }
@@ -1235,14 +1236,38 @@ VkExtent2D phVkEngine<T>::getDrawImageExtent()
 
 
 template <typename T>
+VkRect2D phVkEngine<T>::getRenderArea()
+{
+    // TODO: add features like render scaling
+
+    VkExtent2D window = getWindowExtent();
+	VkExtent2D draw = getDrawImageExtent();
+
+    int width = std::min(window.width, draw.width);
+	int height = std::min(window.height, draw.height);
+
+    VkRect2D render_area = {};
+
+    render_area.offset.x = 0; // (window.width - width) / 2;
+    render_area.offset.y = 0; // (window.height - height) / 2;
+    render_area.extent.width = width;
+    render_area.extent.height = height;
+
+    return render_area;
+}
+
+
+template <typename T>
 VkViewport phVkEngine<T>::getViewport()
 {
+	VkRect2D render_area = getRenderArea();
+
     VkViewport viewport = {};
 
-    viewport.x = 0;
-    viewport.y = 0;
-    viewport.width = (float)getWindowExtent().width;
-    viewport.height = (float)getWindowExtent().height;
+    viewport.x = (float)render_area.offset.x;
+    viewport.y = (float)render_area.offset.y;
+    viewport.width = (float)render_area.extent.width;
+    viewport.height = (float)render_area.extent.height;
     viewport.minDepth = 0.f;
     viewport.maxDepth = 1.f;
 
@@ -1253,14 +1278,9 @@ VkViewport phVkEngine<T>::getViewport()
 template <typename T>
 VkRect2D phVkEngine<T>::getScissor()
 {
-    VkRect2D scissor = {};
+    // TODO: when would this be different?
 
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    scissor.extent.width = getWindowExtent().width;
-    scissor.extent.height = getWindowExtent().height;
-
-    return scissor;
+	return getRenderArea();
 }
 
 
