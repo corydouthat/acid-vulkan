@@ -1,8 +1,8 @@
 
 Issues:
 - (X)Some triangles not visible - likely vertex order
-- Resizing window causes crash if enlarging, but ok if going smaller
-- Resizing window causes image to scale instead of crop
+- (X)Resizing window causes crash if enlarging, but ok if going smaller
+- (X)Resizing window causes image to scale instead of crop
 - (X)Object not centered
 - (X)Validation layer error related to descriptors - may be timing related because it doesn't happen when loading the larger scene? But also that scene just doesn't seem to render
 

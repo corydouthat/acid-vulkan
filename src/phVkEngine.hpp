@@ -74,6 +74,7 @@ private:
     VkFormat swapchain_img_format;		// Image format	
     ArrayList<VkImage> swapchain_images;	// Image handles
     ArrayList<VkImageView> swapchain_image_views;	// Image view handles
+	VkExtent2D swapchain_extent;		// Swapchain image extent
     phVkImage draw_image;               // Swapchain draw image
 	phVkImage depth_image; 	            // Swapchain depth image 
 
@@ -124,7 +125,7 @@ public:
     phVkFrameData& getCurrentFrame() { return frames[frame_number % FRAME_BUFFER_COUNT]; };
     VkExtent2D getWindowExtent();
     VkExtent2D getSwapchainExtent();
-    VkExtent2D getActualExtent(bool clamp = true);
+    //VkExtent2D getActualExtent(bool clamp = true);
     VkExtent2D getDrawImageExtent();
     VkRect2D getRenderArea();
     VkViewport getViewport();
@@ -431,7 +432,7 @@ void phVkEngine<T>::updateScene()
     // Camera projection
     scene_data.proj = Mat4<T>::projPerspective(
 		1.22173f,           // 70 degrees FOV in radians
-        (T)getWindowExtent().width / (T)getWindowExtent().height,
+        (T)getRenderArea().extent.width / (T)getRenderArea().extent.height,
         10000.f, 0.1f);     // Reverse depth help with precision issues
 
     // invert the Y direction on projection matrix so that we are more similar
@@ -1146,7 +1147,7 @@ void phVkEngine<T>::createSwapchain(uint32_t width, uint32_t height)
         .build()
         .value();
 
-    VkExtent2D swapchain_extent = vkb_swapchain.extent;
+    swapchain_extent = vkb_swapchain.extent;
     swapchain = vkb_swapchain.swapchain;
     swapchain_images = vkb_swapchain.get_images().value();
     swapchain_image_views = vkb_swapchain.get_image_views().value();
@@ -1169,6 +1170,8 @@ void phVkEngine<T>::destroySwapchain()
 template <typename T>
 void phVkEngine<T>::resizeSwapchain()
 {
+    // TODO: check if window > draw_image and re-generate draw image
+
     vkDeviceWaitIdle(device);
 
     destroySwapchain();
@@ -1183,46 +1186,46 @@ void phVkEngine<T>::resizeSwapchain()
 template <typename T>
 VkExtent2D phVkEngine<T>::getSwapchainExtent()
 {
-    return getActualExtent(false);
+    return swapchain_extent;
 }
 
 
-template <typename T>
-VkExtent2D phVkEngine<T>::getActualExtent(bool clamp)
-{
-    // TODO: add checks for minImageExtent and maxImageExtent capabilities
-    // TODO: add render scaling
-
-    // TODO: move this to member data?
-    VkSurfaceCapabilitiesKHR capabilities;
-    VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &capabilities));
-
-    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
-    {
-        return capabilities.currentExtent;
-    }
-    else
-    {
-        int width, height;
-        SDL_GetWindowSizeInPixels(window, &width, &height);
-
-        VkExtent2D actual_extent =
-        {
-            static_cast<uint32_t>(width),
-            static_cast<uint32_t>(height)
-        };
-
-        if (clamp)
-        {
-            actual_extent.width = std::clamp(actual_extent.width,
-                capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-            actual_extent.height = std::clamp(actual_extent.height,
-                capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
-        }
-
-        return actual_extent;
-    }
-}
+//template <typename T>
+//VkExtent2D phVkEngine<T>::getActualExtent(bool clamp)
+//{
+//    // TODO: add checks for minImageExtent and maxImageExtent capabilities
+//    // TODO: add render scaling
+//
+//    // TODO: move this to member data?
+//    VkSurfaceCapabilitiesKHR capabilities;
+//    VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &capabilities));
+//
+//    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+//    {
+//        return capabilities.currentExtent;
+//    }
+//    else
+//    {
+//        int width, height;
+//        SDL_GetWindowSizeInPixels(window, &width, &height);
+//
+//        VkExtent2D actual_extent =
+//        {
+//            static_cast<uint32_t>(width),
+//            static_cast<uint32_t>(height)
+//        };
+//
+//        if (clamp)
+//        {
+//            actual_extent.width = std::clamp(actual_extent.width,
+//                capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+//            actual_extent.height = std::clamp(actual_extent.height,
+//                capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+//        }
+//
+//        return actual_extent;
+//    }
+//}
 
 
 template <typename T>
