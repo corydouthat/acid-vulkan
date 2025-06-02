@@ -82,13 +82,13 @@ void phVkScene<T>::load(std::string path)
         meshes[mesh].processMesh(scene->mMeshes[i], scene);
     }
 
-    //// Load materials
-    //// Note: index may not match Assimp index if multiple files have been loaded into the scene
-    //for (unsigned int i = 0; i < scene->mNumMaterials; i++)
-    //{
-    //    int mat = materials.pushEmplace();
-    //    materials[mat].processMaterial(scene->mMaterials[i], scene, model_directory);
-    //}
+    // Load materials
+    // Note: index may not match Assimp index if multiple files have been loaded into the scene
+    for (unsigned int i = 0; i < scene->mNumMaterials; i++)
+    {
+        int mat = materials.pushEmplace();
+        materials[mat].processMaterial(scene->mMaterials[i], scene, model_directory);
+    }
 
     return processNode(scene->mRootNode, scene, Mat4<T>(), meshes_offset, materials_offset);
 }

@@ -182,6 +182,9 @@ void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene)
 template <typename T>
 void phVkMesh<T>::initVulkan(phVkEngine<T>* engine)
 {
+    if (!engine)
+        return;
+
     unsigned int vertex_buf_size = vertices.getCount() * sizeof(phVkVertex<T>);
     unsigned int index_buf_size = indices.getCount() * sizeof(uint32_t);
 

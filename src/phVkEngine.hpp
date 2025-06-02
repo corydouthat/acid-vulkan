@@ -134,10 +134,13 @@ public:
     // -- Run Functions --
     void run();
 
-    // -- Buffer Functions --
+    // -- Helper Functions --
     AllocatedBuffer createBuffer(size_t alloc_size,
         VkBufferUsageFlags usage, VmaMemoryUsage memory_usage);
     void destroyBuffer(const AllocatedBuffer& buffer);
+    phVkImage createImage(const void* data, VkExtent3D extent, VkFormat format,
+        VkImageUsageFlags usages, VmaMemoryUsage memory_usage = VMA_MEMORY_USAGE_GPU_ONLY);
+	void destroyImage(phVkImage& image);
 
     // -- Command Functions --
     void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
@@ -181,7 +184,7 @@ private:
     friend class phVkScene<T>;
     friend class phVkMesh<T>;
     friend class phVkMaterial<T>;
-
+    friend class phVkTexture<T>;
 };
 
 
@@ -307,6 +310,100 @@ void phVkEngine<T>::destroyBuffer(const AllocatedBuffer& buffer)
     vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
 }
 
+template <typename T>
+phVkImage phVkEngine<T>::createImage(const void* data, VkExtent3D extent, 
+    VkFormat format, VkImageUsageFlags usages,
+    VmaMemoryUsage memory_usage)
+{
+    // TODO: add mipmapping support
+
+    phVkImage image;
+
+    // Extent
+    image.extent = extent;
+
+    // Format
+    image.format = format;
+
+    // Create Info
+    VkImageCreateInfo img_info = phVkDefaultImageCreateInfo();
+    img_info.format = format;   // Format
+    img_info.usage = usages;    // Usages
+    img_info.extent = extent;   // Extent
+
+    // Allocate image from GPU local memory
+    // Configure for GPU-only access and fastest memory
+    VmaAllocationCreateInfo img_alloc_info = {};
+    img_alloc_info.usage = memory_usage;
+    if (memory_usage & VMA_MEMORY_USAGE_GPU_ONLY)
+        img_alloc_info.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    //else
+        // TODO
+
+    // -- Allocate Image --
+    VK_CHECK(vmaCreateImage(allocator, &img_info, &img_alloc_info, &image.image,
+        &image.allocation, nullptr));
+
+    // Set image view aspect flag - only color bit or depth
+    VkImageAspectFlags aspect_flag;
+    if (format == VK_FORMAT_D32_SFLOAT)
+        aspect_flag = VK_IMAGE_ASPECT_DEPTH_BIT;
+    else
+        aspect_flag = VK_IMAGE_ASPECT_COLOR_BIT;
+
+    // Set up image view create info
+    VkImageViewCreateInfo view_info = phVkDefaultImageViewCreateInfo();
+    view_info.format = image.format;
+    view_info.image = image.image;
+    view_info.subresourceRange.aspectMask = aspect_flag;
+
+    // -- Create Image View --
+    VK_CHECK(vkCreateImageView(device, &view_info, nullptr, &image.view));
+
+    // -- Upload Image Data --
+    // Skipped when data = nullptr (e.g. swapchain image)
+    if (data)
+    {
+        size_t data_size = extent.width * extent.height * extent.depth * 4;
+        AllocatedBuffer upload_buffer = createBuffer(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+        memcpy(upload_buffer.info.pMappedData, data, data_size);
+
+        immediateSubmit([&](VkCommandBuffer cmd) {
+            vkutil::transition_image(cmd, image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+            VkBufferImageCopy copy_region = {};
+            copy_region.bufferOffset = 0;
+            copy_region.bufferRowLength = 0;
+            copy_region.bufferImageHeight = 0;
+
+            copy_region.imageSubresource.aspectMask = aspect_flag;
+            copy_region.imageSubresource.mipLevel = 0;
+            copy_region.imageSubresource.baseArrayLayer = 0;
+            copy_region.imageSubresource.layerCount = 1;
+            copy_region.imageExtent = extent;
+
+            // Cop the buffer into the image
+            vkCmdCopyBufferToImage(cmd, upload_buffer.buffer, image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+                &copy_region);
+
+            vkutil::transition_image(cmd, image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            });
+
+        destroyBuffer(upload_buffer);
+    }
+
+    return image;
+}
+
+template <typename T>
+void phVkEngine<T>::destroyImage(phVkImage& image)
+{
+    vkDestroyImageView(device, image.view, nullptr);
+    vmaDestroyImage(allocator, image.image, image.allocation);
+}
+
 
 template <typename T>
 void phVkEngine<T>::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function)
@@ -395,10 +492,8 @@ void phVkEngine<T>::cleanup()
         }
 
         // Destroy swapchain images
-        vkDestroyImageView(device, depth_image.view, nullptr);
-        vmaDestroyImage(allocator, depth_image.image, depth_image.allocation);
-        vkDestroyImageView(device, draw_image.view, nullptr);
-        vmaDestroyImage(allocator, draw_image.image, draw_image.allocation);
+        destroyImage(depth_image);
+        destroyImage(draw_image);
 
         // Destroy Vulkan configs (de-init Vulkan)
         vmaDestroyAllocator(allocator);
@@ -702,7 +797,7 @@ void phVkEngine<T>::drawMesh(VkCommandBuffer cmd)
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);         // Queues up the buffer
     writer.updateSet(device, global_descriptor);    // Assigns the global_descriptor set pointer
 
-    // Bind scene data global descriptor (slot 0)
+    // Bind scene data global descriptor (set 0)
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline.layout, 0, 1,
         &global_descriptor, 0, nullptr);
 
@@ -740,6 +835,7 @@ void phVkEngine<T>::drawMesh(VkCommandBuffer cmd)
             for (unsigned int j = 0; j < scenes[s].models[i].sets.getCount(); j++)
             {
                 unsigned int mesh_i = scenes[s].models[i].sets[j].mesh_i;
+                unsigned int mat_i = scenes[s].models[i].sets[j].mat_i;
 
                 // Push constants - Mesh-specific
                 push_constants.vertex_buffer_address = scenes[s].meshes[mesh_i].vertex_buffer_address;
@@ -747,13 +843,10 @@ void phVkEngine<T>::drawMesh(VkCommandBuffer cmd)
                 vkCmdPushConstants(cmd, mesh_pipeline.layout,
                     VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
 
-                // TODO TODO TODO
-                // Bind per-object material set descriptor (slot 1)
-                // TODO: need to actually create the materials
-                // TODO: use single_image_descriptor_layout when allocating... 
-                //       the descriptor set to match pipeline config?
-                //vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline.layout, 1, 1,
-                //    &r.material->material_set, 0, nullptr);
+                // Bind per-object material set descriptor (set 1, slots 0-2)
+                // TODO: descriptor layout should be based on pipeline
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline.layout, 1, 1,
+                    &scenes[s].materials[mat_i].material_descriptor_set, 0, nullptr);
 
                 // Bind index
                 vkCmdBindIndexBuffer(cmd, scenes[s].meshes[mesh_i].index_buffer.buffer, 
@@ -885,84 +978,28 @@ void phVkEngine<T>::initSwapchain()
 	SDL_GetWindowSize(window, &window_size[0], &window_size[1]);
     createSwapchain(window_size[0], window_size[1]);
 
-    // -- Init Draw Image --
-    //
-    // Set the draw image to monitor dimensions
+    // Set the draw image to larger size
     // Will only render to a portion that matches the window size
     VkExtent3D draw_extent =
     {
-        // TODO: Still crashes if resizing above these dimensions?
         // TODO: Pull monitor dimensions rather than hard-coding
         2560,   // Width
-		1440,   // Height
+        1440,   // Height
         1       // Depth value
     };
 
+    // -- Draw Image --
     // Draw format hardcoded
-    // 64 bits per pixel
-    // May be overkill, but useful in some cases
-    draw_image.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-    draw_image.extent = draw_extent;
-
-    // Define image usages
-    VkImageUsageFlags draw_image_usages{};
-    draw_image_usages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    draw_image_usages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    draw_image_usages |= VK_IMAGE_USAGE_STORAGE_BIT;
-    draw_image_usages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    
-    VkImageCreateInfo img_info = phVkDefaultImageCreateInfo();
-    img_info.format = draw_image.format;
-    img_info.usage = draw_image_usages;
-    img_info.extent = draw_extent;
-
-    // Allocate draw image from GPU local memory
-    // Configure for GPU-only access and fastest memory
-    VmaAllocationCreateInfo img_alloc_info = {};
-    img_alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-    img_alloc_info.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    // Allocate and create the image
-    // TODO: any reason to not just use createBuffer()?
-    vmaCreateImage(allocator, &img_info, &img_alloc_info, &draw_image.image, 
-        &draw_image.allocation, nullptr);
-
-    // Build an image-view for the draw image to use for rendering
-    // vkguide.dev always pairs vkimages with "default" imageview
-    VkImageViewCreateInfo view_info = phVkDefaultImageViewCreateInfo();
-	view_info.format = draw_image.format;
-	view_info.image = draw_image.image;
-	view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-
-    VK_CHECK(vkCreateImageView(device, &view_info, nullptr, &draw_image.view));
+    // 64 bits per pixel may be overkill, but useful in some cases
+	draw_image = createImage(nullptr, draw_extent, VK_FORMAT_R16G16B16A16_SFLOAT,
+		VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
+		VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 
 
-
-
-    // -- Init Depth Image --
+    // -- Depth Image --
     //
-    depth_image.format = VK_FORMAT_D32_SFLOAT;
-    depth_image.extent = draw_extent;
-    VkImageUsageFlags depth_image_usages{};
-    depth_image_usages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;  // Key to depth pass
-
-    VkImageCreateInfo dimg_info = phVkDefaultImageCreateInfo();
-	dimg_info.format = depth_image.format;
-	dimg_info.extent = draw_extent;
-	dimg_info.usage = depth_image_usages;
-
-    // Allocate and create the image
-    // TODO: Any reason to not just use createBuffer()
-    vmaCreateImage(allocator, &dimg_info, &img_alloc_info, &depth_image.image, 
-        &depth_image.allocation, nullptr);
-
-    // Build an image-view for the draw image to use for rendering
-    VkImageViewCreateInfo dview_info = phVkDefaultImageViewCreateInfo();
-    dview_info.format = depth_image.format;
-    dview_info.image = depth_image.image;
-    dview_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-
-    VK_CHECK(vkCreateImageView(device, &dview_info, nullptr, &depth_image.view));
+	depth_image = createImage(nullptr, draw_extent, VK_FORMAT_D32_SFLOAT,
+		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
 }
 
 
@@ -1336,7 +1373,7 @@ void phVkEngine<T>::createMeshPipelines()
     // Descriptor sets
     // TODO: confirm this works - doesn't seem like vkguide.dev adds the gpu_scene_data_descriptor_layout
     mesh_pipeline.addDescriptorSetLayout(gpu_scene_data_descriptor_layout);
-    //mesh_pipeline.addDescriptorSetLayout(material_data_descriptor_layout);
+    mesh_pipeline.addDescriptorSetLayout(material_data_descriptor_layout);
 
     // Input topology
     mesh_pipeline.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
