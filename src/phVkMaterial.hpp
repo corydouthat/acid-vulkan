@@ -204,24 +204,9 @@ void phVkTexture<T>::initVulkan(phVkEngine<T>* engine)
 
     this->engine = engine;
 
-    // Determine format based on channels
-    VkFormat format;
-    switch (channels) 
-    {
-    case 1: 
-        format = VK_FORMAT_R8_UNORM; break;
-    case 2: 
-        format = VK_FORMAT_R8G8_UNORM; break;
-    case 3: 
-        format = VK_FORMAT_R8G8B8_UNORM; break;
-    case 4: 
-        format = VK_FORMAT_R8G8B8A8_UNORM; break;
-	default: 
-        std::cout << "Unsupported texture format with "
-		<< channels << " channels." << std::endl;
-		throw std::runtime_error("Unsupported texture format.");
-		return;
-    }
+    // Note: many physical GPUs don't support non-alpha image formats, 
+    //      so we will just assume this unless it breaks
+    VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
 
 	VkExtent3D extent = 
     {
@@ -569,10 +554,12 @@ void phVkMaterial<T>::initVulkan(phVkEngine<T>* engine)
     writer.clear();
     writer.writeBuffer(0, material_buffer.buffer, sizeof(phVkMaterialDataVkGuide),
         0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-    writer.writeImage(1, diffuse_texture.vulkan_image.view, diffuse_texture.vulkan_sampler,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-    writer.writeImage(2, specular_texture.vulkan_image.view, specular_texture.vulkan_sampler,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    if (diffuse_texture.vulkan_initialized)
+        writer.writeImage(1, diffuse_texture.vulkan_image.view, diffuse_texture.vulkan_sampler,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    if (specular_texture.vulkan_initialized)
+        writer.writeImage(2, specular_texture.vulkan_image.view, specular_texture.vulkan_sampler,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
     writer.updateSet(engine->device, material_descriptor_set);
 

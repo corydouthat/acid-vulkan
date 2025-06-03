@@ -336,13 +336,13 @@ phVkImage phVkEngine<T>::createImage(const void* data, VkExtent3D extent,
     VmaAllocationCreateInfo img_alloc_info = {};
     img_alloc_info.usage = memory_usage;
     if (memory_usage & VMA_MEMORY_USAGE_GPU_ONLY)
-        img_alloc_info.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        img_alloc_info.requiredFlags |= VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     //else
         // TODO
 
     // -- Allocate Image --
-    VK_CHECK(vmaCreateImage(allocator, &img_info, &img_alloc_info, &image.image,
-        &image.allocation, nullptr));
+    VK_CHECK(vmaCreateImage(allocator, &img_info, &img_alloc_info, &(image.image),
+        &(image.allocation), nullptr));
 
     // Set image view aspect flag - only color bit or depth
     VkImageAspectFlags aspect_flag;
@@ -983,8 +983,8 @@ void phVkEngine<T>::initSwapchain()
     VkExtent3D draw_extent =
     {
         // TODO: Pull monitor dimensions rather than hard-coding
-        2560,   // Width
-        1440,   // Height
+        2048,   // Width
+        2048,   // Height
         1       // Depth value
     };
 
@@ -1359,8 +1359,8 @@ void phVkEngine<T>::createMeshPipelines()
         mesh_pipeline = phVkPipeline(device, phVkPipelineType::GRAPHICS, getViewport(), getScissor());
 
     // Shader modules
-    mesh_pipeline.loadVertexShader("../../../../acid-vulkan/shaders/mesh_no_mat.vert.spv");   // TODO: change
-    mesh_pipeline.loadFragmentShader("../../../../acid-vulkan/shaders/mesh_no_mat.frag.spv"); // TODO: change
+    mesh_pipeline.loadVertexShader("../../../../acid-vulkan/shaders/mesh.vert.spv");   // TODO: change
+    mesh_pipeline.loadFragmentShader("../../../../acid-vulkan/shaders/mesh.frag.spv"); // TODO: change
 
     // Push constants
     VkPushConstantRange mesh_push_range{};
