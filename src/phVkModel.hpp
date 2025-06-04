@@ -134,8 +134,8 @@ void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene)
         {
             // TODO: add support for AI_MAX_NUMBER_OF_TEXTURECOORDS != 2
             // TODO: add support for additional texture coordinate sets
-            vertex.uv_x = mesh->mTextureCoords[0]->x;
-            vertex.uv_y = mesh->mTextureCoords[0]->y;
+            vertex.uv_x = mesh->mTextureCoords[0][i].x;
+            vertex.uv_y = 1.0f - mesh->mTextureCoords[0][i].y;
         }
         else
         {

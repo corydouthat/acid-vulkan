@@ -56,7 +56,10 @@ void phVkScene<T>::load(std::string path)
     // TODO: make configurable
     const aiScene* scene = importer.ReadFile(path,
         aiProcess_Triangulate |             // Self-explanatory (does allow line and point primitives)
-        /*aiProcess_FlipUVs | */            // Flip to clockwise (ccw is default)
+		//aiProcess_ConvertToLeftHanded |   // Convert to left-handed coordinate system (default is right-handed)
+        //aiProcess_FlipUVs |               // Flip to clockwise (ccw is default)
+		//aiProcess_GenUVCoords |             // Generate UV coordinates (if non-standard?)
+        //aiProcess_TransformUVCoords |       // Normalize UVs if needed
         aiProcess_CalcTangentSpace |        // Used for things like normal mapping
         aiProcess_GenNormals |              // Generate vertex normals (only if they don't exist)
         aiProcess_JoinIdenticalVertices);   // Merge duplicate vertices (but, see note at processMesh)         

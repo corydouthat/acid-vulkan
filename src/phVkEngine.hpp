@@ -138,7 +138,7 @@ public:
     AllocatedBuffer createBuffer(size_t alloc_size,
         VkBufferUsageFlags usage, VmaMemoryUsage memory_usage);
     void destroyBuffer(const AllocatedBuffer& buffer);
-    phVkImage createImage(const void* data, VkExtent3D extent, VkFormat format,
+    phVkImage createImage(const void* data, int channels_in, VkExtent3D extent, VkFormat format,
         VkImageUsageFlags usages, VmaMemoryUsage memory_usage = VMA_MEMORY_USAGE_GPU_ONLY);
 	void destroyImage(phVkImage& image);
 
@@ -311,11 +311,20 @@ void phVkEngine<T>::destroyBuffer(const AllocatedBuffer& buffer)
 }
 
 template <typename T>
-phVkImage phVkEngine<T>::createImage(const void* data, VkExtent3D extent, 
-    VkFormat format, VkImageUsageFlags usages,
+phVkImage phVkEngine<T>::createImage(const void* data, int channels_in, 
+    VkExtent3D extent, VkFormat format, VkImageUsageFlags usages,
     VmaMemoryUsage memory_usage)
 {
-    // TODO: add mipmapping support
+    // TODO: Add mipmapping support
+    // TODO: Add physical device capability checks
+    //       most importantly, reject image formats that are not supported 
+    //       (e.g. non-alpha formats are not supported on most modern GPUs)
+    //       Also check that extent is supported?
+
+    // TODO: Add support for copying in a depth image or other special formats?
+    //       Note that the physical GPU typically only supports RGBA for textures
+    if (data && channels_in != 4)
+        return phVkImage();
 
     phVkImage image;
 
@@ -364,10 +373,16 @@ phVkImage phVkEngine<T>::createImage(const void* data, VkExtent3D extent,
     // Skipped when data = nullptr (e.g. swapchain image)
     if (data)
     {
-        size_t data_size = extent.width * extent.height * extent.depth * 4;
-        AllocatedBuffer upload_buffer = createBuffer(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+        // Note: Assuming RBGA Vulkan image (this is probably valid since RGB isn't typically supported on the GPU)
+        //       Also assuming one byte per channel
+        //       Already checked above that channels_in == 4
+        int channels = 4;
+        size_t pixel_count = extent.width * extent.height;
 
-        memcpy(upload_buffer.info.pMappedData, data, data_size);
+        // Create staging buffer
+        AllocatedBuffer upload_buffer = createBuffer(pixel_count * channels, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+        memcpy(upload_buffer.info.pMappedData, data, pixel_count * channels);
 
         immediateSubmit([&](VkCommandBuffer cmd) {
             vkutil::transition_image(cmd, image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -991,14 +1006,14 @@ void phVkEngine<T>::initSwapchain()
     // -- Draw Image --
     // Draw format hardcoded
     // 64 bits per pixel may be overkill, but useful in some cases
-	draw_image = createImage(nullptr, draw_extent, VK_FORMAT_R16G16B16A16_SFLOAT,
+	draw_image = createImage(nullptr, 0, draw_extent, VK_FORMAT_R16G16B16A16_SFLOAT,
 		VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
 		VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 
 
     // -- Depth Image --
     //
-	depth_image = createImage(nullptr, draw_extent, VK_FORMAT_D32_SFLOAT,
+	depth_image = createImage(nullptr, 0, draw_extent, VK_FORMAT_D32_SFLOAT,
 		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
 }
 

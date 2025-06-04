@@ -135,14 +135,14 @@ bool phVkTexture<T>::loadTexture(const aiScene* scene,
         // Note: mHeight == 0 indicates compressed image
 
         // Automatically detects format?
-        stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(ai_tex->pcData),
+        data = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(ai_tex->pcData),
             ai_tex->mHeight > 0 ?
 			ai_tex->mWidth * ai_tex->mHeight * 4 : // Raw image dimensions
-            ai_tex->mWidth,  // Holds the size in bytes for embedded textures
+            ai_tex->mWidth, // Holds the size in bytes for embedded textures
 			&width,
 			&height,
 			&channels,
-			0  // 0 = auto-detect channels
+            STBI_rgb_alpha  // Force RGBA format for GPU compatibility
 		);
     }
     else                        // Load from file
@@ -171,7 +171,7 @@ bool phVkTexture<T>::loadTexture(const aiScene* scene,
             &width,
             &height,
             &channels,
-            0  // 0 = auto-detect channels
+            STBI_rgb_alpha  // Force RGBA format for GPU compatibility
         );
 
         if (data)
@@ -191,6 +191,8 @@ bool phVkTexture<T>::loadTexture(const aiScene* scene,
             return false;
         }
     }
+
+	channels = 4;       // Due to STBI_rgb_alpha argument above
 
     is_loaded = true;
 }
@@ -217,7 +219,7 @@ void phVkTexture<T>::initVulkan(phVkEngine<T>* engine)
 
     // Create image
 	vulkan_image = engine->createImage(
-		data, extent, format,
+		data, channels, extent, format,
 		VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 
     // Create sampler
@@ -226,9 +228,9 @@ void phVkTexture<T>::initVulkan(phVkEngine<T>* engine)
     sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     sampler_info.magFilter = VK_FILTER_LINEAR;
     sampler_info.minFilter = VK_FILTER_LINEAR;
-    //sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    //sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    //sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     //sampler_info.anisotropyEnable = VK_TRUE;
     //sampler_info.maxAnisotropy = 16.0f;
     //sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
