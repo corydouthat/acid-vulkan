@@ -123,6 +123,9 @@ bool phVkTexture<T>::loadTexture(const aiScene* scene,
     // Save the path for reference
     path = texture_path;
 
+    // Used below
+    std::string final_path;
+
     if (path.starts_with("*"))    // Embedded texture
     {
         const aiTexture* ai_tex = scene->GetEmbeddedTexture(texture_path.c_str());
@@ -163,7 +166,7 @@ bool phVkTexture<T>::loadTexture(const aiScene* scene,
         }
 
         // Convert to string and normalize path
-        std::string final_path = full_path.string();
+        final_path = full_path.string();
 
         // Load the image using stb_image
         data = stbi_load(
@@ -174,27 +177,26 @@ bool phVkTexture<T>::loadTexture(const aiScene* scene,
             STBI_rgb_alpha  // Force RGBA format for GPU compatibility
         );
 
-        if (data)
-        {
-            is_loaded = true;
-            std::cout << "Loaded texture: " << final_path << " ("
-                << width << "x" << height
-                << ", " << channels << " channels)" << std::endl;
-
-            return true;
-        }
-        else
-        {
-            std::cerr << "Failed to load texture: " << final_path << std::endl;
-            std::cerr << "stbi_failure_reason: " << stbi_failure_reason() << std::endl;
-
-            return false;
-        }
     }
 
-	channels = 4;       // Due to STBI_rgb_alpha argument above
+    if (data)
+    {
+        std::cout << "Loaded texture: " << final_path << " ("
+            << width << "x" << height
+            << ", " << channels << " channels)" << std::endl;
 
-    is_loaded = true;
+        is_loaded = true;
+        channels = 4;       // Due to STBI_rgb_alpha argument above
+
+        return true;
+    }
+    else
+    {
+        std::cerr << "Failed to load texture: " << final_path << std::endl;
+        std::cerr << "stbi_failure_reason: " << stbi_failure_reason() << std::endl;
+
+        return false;
+    }
 }
 
 
