@@ -532,7 +532,7 @@ void phVkEngine<T>::cleanup()
 template <typename T>
 void phVkEngine<T>::updateScene()
 {
-    scene_data.ambient_color =  Vec4<T>(0.01f, 0.01f, 0.01f, 1.0f);     // TODO
+    scene_data.ambient_color =  Vec4<T>(1.0f, 1.0f, 1.0f, 1.0f);        // TODO
     scene_data.sunlight_color = Vec4<T>(1.0f, 1.0f, 1.0f, 1.0f);        // TODO
 	scene_data.sunlight_direction = Vec4<T>(-0.5f, -1.0f, 0.0f, 1.0f);  // TODO, and could this be a Vec3?
 
@@ -845,12 +845,12 @@ void phVkEngine<T>::drawMesh(VkCommandBuffer cmd)
         {
             // Push constants - Model-specific
             GPUDrawPushConstants push_constants;
-            push_constants.world_matrix = scenes[s].models[i].transform;
+            push_constants.world_matrix = scenes[s].models[i].getTransform();
 
-            for (unsigned int j = 0; j < scenes[s].models[i].sets.getCount(); j++)
+            for (unsigned int j = 0; j < scenes[s].models[i].mesh_indices.getCount(); j++)
             {
-                unsigned int mesh_i = scenes[s].models[i].sets[j].mesh_i;
-                unsigned int mat_i = scenes[s].models[i].sets[j].mat_i;
+                unsigned int mesh_i = scenes[s].models[i].mesh_indices[j];
+                unsigned int mat_i = scenes[s].meshes[mesh_i].mat_i;
 
                 // Push constants - Mesh-specific
                 push_constants.vertex_buffer_address = scenes[s].meshes[mesh_i].vertex_buffer_address;

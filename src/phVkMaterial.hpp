@@ -348,9 +348,15 @@ public:
         reflectivity = 0.0f;
         refractive_index = 2.0f;
 
+        has_diffuse_texture = false;
+        has_specular_texture = false;
+        has_normal_texture = false;
+        has_height_texture = false;
+
         vulkan_initialized = false;
 
         material_buffer = {};
+        material_descriptor_set = VK_NULL_HANDLE;
     }
 
     ~phVkMaterial()

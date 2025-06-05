@@ -37,7 +37,8 @@ public:
     void load(std::string path);
     void processNode(aiNode* node, const aiScene* scene, Mat4<T> global_transform = Mat4<T>(), 
         unsigned int meshes_offset = 0, unsigned int materials_offset = 0);
-    void processMesh(const aiMesh* mesh, const aiScene* scene, phVkMesh<T>* new_mesh);
+    //void processMesh(const aiMesh* mesh, const aiScene* scene, phVkMesh<T>* new_mesh, 
+    //    unsigned int materials_offset = 0);
     void initVulkan(phVkEngine<T>* engine);
 
     // No destructor - rely on other objects destructors
@@ -76,21 +77,20 @@ void phVkScene<T>::load(std::string path)
     // Get model directory for material functions
     std::string model_directory = path.substr(0, path.find_last_of('/'));
 
-    // Load meshes
-    // Note: index may not match Assimp index if multiple files have been loaded into the scene
-    for (unsigned int i = 0; i < scene->mNumMeshes; i++)
-    {
-        int mesh = meshes.push(phVkMesh<T>());  
-        //int mesh = meshes.pushEmplace();      // TODO: confirming if this causes memory access violation when deleting?
-        meshes[mesh].processMesh(scene->mMeshes[i], scene);
-    }
-
     // Load materials
     // Note: index may not match Assimp index if multiple files have been loaded into the scene
     for (unsigned int i = 0; i < scene->mNumMaterials; i++)
     {
         int mat = materials.pushEmplace();
         materials[mat].processMaterial(scene->mMaterials[i], scene, model_directory);
+    }
+
+    // Load meshes
+    // Note: index may not match Assimp index if multiple files have been loaded into the scene
+    for (unsigned int i = 0; i < scene->mNumMeshes; i++)
+    {
+        int mesh = meshes.pushEmplace();
+        meshes[mesh].processMesh(scene->mMeshes[i], scene, materials_offset);
     }
 
     return processNode(scene->mRootNode, scene, Mat4<T>(), meshes_offset, materials_offset);
@@ -104,37 +104,57 @@ template <typename T>
 void phVkScene<T>::processNode(aiNode* node, const aiScene* scene, Mat4<T> global_transform, 
     unsigned int meshes_offset, unsigned int materials_offset)
 {
+    if (!node || !scene)
+        return;
+
     // Every node becomes a model
     // Can have multiple meshes
     // But, there is only a single transform per node
 
-    // Check valid node / meshes
+    Mat4<T> ai_transform, model_transform, model_scale;
+
+    // Note: aiMatrix4x4 is in row-major order, so weneed to transpose it
+    ai_transform = Mat4<T>(&node->mTransformation[0][0]).transp();
+
+	// Decompose transform to separate out scaling
+    ai_transform.decomposeTransfScale(&model_transform, &model_scale);
+
+	// Propogate node transforms and update global_transform
+    ai_transform = global_transform * ai_transform;
+    global_transform = global_transform * model_transform;
+
     int model = -1;
-    if (node && node->mNumMeshes > 0)
-        model = models.push(phVkModel<T>{});
-    else
-        return;
-
-    // Get node name
-    models[model].name = node->mName.C_Str();
-
-    // Get node transformation matrix
-    global_transform = global_transform * Mat4<T>(&node->mTransformation[0][0]);
-    models[model].transform = global_transform;
-
-    // Process all meshes in the current node
-    for (unsigned int i = 0; i < node->mNumMeshes; i++)
+    if (node->mNumMeshes > 0)   // Check valid node / meshes
     {
-        // Add mesh set
-        int set = models[model].sets.push(phVkMeshSet<T>());
+        model = models.push(phVkModel<T>{});
 
-        // Register mesh instance (index)
-        models[model].sets[set].mesh_i = meshes_offset + node->mMeshes[i];
+        // Get node name
+        models[model].name = node->mName.C_Str();
 
-        //// Register material instances (indexes)
-        //// Note: it appears that Assimp assigns materials at the mesh level, not the mesh instance
-        //models[model].sets[set].mat_i = materials_offset + scene->mMeshes[node->mMeshes[i]]->mMaterialIndex;
+        // Set node scale matrix
+        models[model].scale = model_scale;
+        if (model_scale != Mat4<T>())
+			models[model].scale_valid = true;
+
+		// Set node transform matrix
+		models[model].transform = global_transform;
+        models[model].transform_valid = true;
+
+		// Set combined scale transform matrix
+		models[model].scale_transform = ai_transform;
+		models[model].scale_transform_valid = true;
+
+        // Process all meshes in the current node
+        for (unsigned int i = 0; i < node->mNumMeshes; i++)
+        {
+            // Register mesh instance (index)
+            int mesh_instance = models[model].mesh_indices.push(meshes_offset + node->mMeshes[i]);
+        }
     }
+    //else
+    //{
+    //    // TODO: define empty node if relevant?
+    //}
 
     // Process all child nodes recursively
     for (unsigned int i = 0; i < node->mNumChildren; i++)

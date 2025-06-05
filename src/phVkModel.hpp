@@ -55,6 +55,7 @@ public:
 
 	ArrayList<phVkVertex<T>> vertices;	// Vertices
 	ArrayList<unsigned int> indices;	// Vertex indices (triangles)
+	int mat_i;                          // Material index (-1 if none)
 
     // Vulkan buffer data
     phVkEngine<T>* engine;
@@ -67,18 +68,9 @@ public:
     ~phVkMesh() { vulkanCleanup(); }
 
     // Functions
-    void processMesh(const aiMesh* mesh, const aiScene* scene);
+    void processMesh(const aiMesh* mesh, const aiScene* scene, unsigned int materials_offset = 0);
     void initVulkan(phVkEngine<T>* engine);
     void vulkanCleanup();
-};
-
-
-// MESH SET
-template <typename T = float>
-struct phVkMeshSet
-{
-	unsigned int mesh_i;	// Mesh index
-	unsigned int mat_i;		// Material index
 };
 
 
@@ -89,15 +81,31 @@ struct phVkModel
 	std::string name;		// Human friendly name (optional)
 	std::string file_path;	// Original file path
 
-    Mat4<T> transform;      // Object transform to global coordinates
+	ArrayList<unsigned int> mesh_indices; // Mesh indices (can have multiple meshes per model)
 
-	ArrayList<phVkMeshSet<T>> sets;	// Mesh sets
+    bool scale_valid = false;
+	Mat4<T> scale;              // Scale matrix
+
+    bool transform_valid = false;
+    Mat4<T> transform;          // Object transform to global coordinates
+
+	bool scale_transform_valid = false;
+    Mat4<T> scale_transform;    // Combined transform matrix
+
+    // Callback function and index to get transform from external engine
+    unsigned int ext_index = 0;
+	Mat4<T>(*getExtTransform)(unsigned int) = nullptr;
+
+    void setTransformCallback(Mat4<T>(*func)(unsigned int), unsigned int index);
+    Mat4<T> getTransform();
 };
 
 
 template <typename T>
 phVkMesh<T>::phVkMesh<T>()
 {
+    ccw = true;
+    mat_i = -1;
     engine = nullptr;
     index_buffer = {};
     vertex_buffer = {};
@@ -109,7 +117,7 @@ phVkMesh<T>::phVkMesh<T>()
 //       multiple texture coordinates, normals, etc.
 //       As an example, a cube resulted in 24 vertices.
 template <typename T>
-void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene)
+void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene, unsigned int materials_offset)
 {
     // Process vertices
     for (unsigned int i = 0; i < mesh->mNumVertices; i++)
@@ -177,6 +185,9 @@ void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene)
             throw std::runtime_error("Assimp importer found non-triangular faces.");
         }
     }
+
+    // Process materials
+    mat_i = mesh->mMaterialIndex + materials_offset;
 }
 
 template <typename T>
@@ -259,4 +270,52 @@ void phVkMesh<T>::vulkanCleanup()
         engine->destroyBuffer(index_buffer);
     if (vertex_buffer.buffer)
         engine->destroyBuffer(vertex_buffer);
+}
+
+
+template <typename T>
+void phVkModel<T>::setTransformCallback(Mat4<T>(*func)(unsigned int), unsigned int index)
+{
+    getExtTransform = func;
+    ext_index = index;
+}
+
+
+template <typename T>
+Mat4<T> phVkModel<T>::getTransform()
+{
+    Mat4<T> temp;
+
+    if (getExtTransform)
+    {
+        temp = getExtTransform(ext_index);
+
+        if (transform_valid)
+            transform = temp;
+
+        if (scale_valid)
+            temp = temp * scale;
+
+        if (scale_transform_valid)
+            scale_transform = temp;
+
+        return temp;
+    }
+    else
+    {
+        if (scale_transform_valid)
+        {
+            return scale_transform;
+        }
+        else
+        {
+            if (scale_valid)
+                temp = scale;
+
+            if (transform_valid)
+                temp = transform * temp;
+
+            return temp;
+        }
+    }
 }
