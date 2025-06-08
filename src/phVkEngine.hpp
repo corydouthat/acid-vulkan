@@ -55,10 +55,6 @@ private:
     // SDL / Window
     SDL_Window* window = nullptr;
 
-    // Scene
-    ArrayList<phVkScene<T>> scenes;
-    GPUSceneData<T> scene_data;
-
     // Vulkan
 	VkInstance instance;                // Vulkan instance
 	VkDebugUtilsMessengerEXT debug_messenger; // Debug output handle
@@ -104,8 +100,14 @@ private:
 
 public:
     // PUBLIC DATA
+    
+    // Camera
     ArrayList<phVkCamera<T>> cameras;
     unsigned int active_camera = 0;
+
+    // Scene
+    ArrayList<phVkScene<T>> scenes;
+    GPUSceneData<T> scene_data;
 
 
     // PUBLIC FUNCTIONS

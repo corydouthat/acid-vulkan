@@ -94,15 +94,16 @@ struct phVkModel
 
     // Callback function and index to get transform from external engine
     unsigned int ext_index = 0;
-	Mat4<T>(*getExtTransform)(unsigned int) = nullptr;
+	std::function<Mat4<T>(unsigned int)> getExtTransform = nullptr;
+	//Mat4<T>(*getExtTransform)(unsigned int) = nullptr;
 
-    void setTransformCallback(Mat4<T>(*func)(unsigned int), unsigned int index);
+    void setTransformCallback(std::function<Mat4<T>(unsigned int)>, unsigned int index);
     Mat4<T> getTransform();
 };
 
 
 template <typename T>
-phVkMesh<T>::phVkMesh<T>()
+phVkMesh<T>::phVkMesh()
 {
     ccw = true;
     mat_i = -1;
@@ -274,7 +275,7 @@ void phVkMesh<T>::vulkanCleanup()
 
 
 template <typename T>
-void phVkModel<T>::setTransformCallback(Mat4<T>(*func)(unsigned int), unsigned int index)
+void phVkModel<T>::setTransformCallback(std::function<Mat4<T>(unsigned int)> func, unsigned int index)
 {
     getExtTransform = func;
     ext_index = index;
