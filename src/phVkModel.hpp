@@ -69,6 +69,7 @@ public:
 
     // Functions
     void processMesh(const aiMesh* mesh, const aiScene* scene, unsigned int materials_offset = 0);
+    void getMeshData(ArrayList<Vec3<T>>* v_out, ArrayList<unsigned int>* i_out, bool* tri_format, bool* ccw_format);
     void initVulkan(phVkEngine<T>* engine);
     void vulkanCleanup();
 };
@@ -95,9 +96,9 @@ struct phVkModel
     // Callback function and index to get transform from external engine
     unsigned int ext_index = 0;
 	std::function<Mat4<T>(unsigned int)> getExtTransform = nullptr;
-	//Mat4<T>(*getExtTransform)(unsigned int) = nullptr;
 
     void setTransformCallback(std::function<Mat4<T>(unsigned int)>, unsigned int index);
+
     Mat4<T> getTransform();
 };
 
@@ -190,6 +191,40 @@ void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene, unsigned
     // Process materials
     mat_i = mesh->mMaterialIndex + materials_offset;
 }
+
+
+template <typename T>
+void phVkMesh<T>::getMeshData(ArrayList<Vec3<T>>* v_out, ArrayList<unsigned int>* i_out, 
+    bool* tri_format, bool* ccw_format)
+{
+	if (!v_out || !i_out || !tri_format || !ccw_format)
+		return;
+
+    *tri_format = true; // TODO: add checks / support for non-triangular faces
+    *ccw_format = ccw;
+
+    // Vertices
+    v_out->clear();
+    v_out->allocate(vertices.getCount());
+    for (unsigned int i = 0; i < vertices.getCount(); i++)
+    {
+        v_out->push(vertices[i].p);
+    }
+
+    // TODO: would have to make this a phVkModel member function to get scale - may not make sense
+    //// Apply scale
+    //if (scale_valid)
+    //{
+    //    for (unsigned int i = 0; i < v_out->getCount(); i++)
+    //    {
+    //        (*v_out)[i] = scale * (*v_out)[i];
+    //    }
+    //}
+
+    // Indices
+    i_out->copyData(indices);
+}
+
 
 template <typename T>
 void phVkMesh<T>::initVulkan(phVkEngine<T>* engine)
