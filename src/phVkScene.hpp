@@ -63,7 +63,8 @@ void phVkScene<T>::load(std::string path)
         aiProcess_TransformUVCoords |       // Normalize UVs if needed
         aiProcess_CalcTangentSpace |        // Used for things like normal mapping
         aiProcess_GenNormals |              // Generate vertex normals (only if they don't exist)
-        aiProcess_JoinIdenticalVertices);   // Merge duplicate vertices (but, see note at processMesh)         
+        aiProcess_JoinIdenticalVertices     // Merge duplicate vertices (but, see note at processMesh)
+    );
 
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
