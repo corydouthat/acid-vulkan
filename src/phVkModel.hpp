@@ -121,6 +121,12 @@ phVkMesh<T>::phVkMesh()
 template <typename T>
 void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene, unsigned int materials_offset)
 {
+    // Pre-allocate
+    vertices.clear();
+    indices.clear();
+	vertices.allocate(mesh->mNumVertices);
+    indices.allocate(mesh->mNumFaces * 3);
+
     // Process vertices
     for (unsigned int i = 0; i < mesh->mNumVertices; i++)
     {
