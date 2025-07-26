@@ -54,6 +54,7 @@ private:
 
     // SDL / Window
     SDL_Window* window = nullptr;
+    std::function<Mat4<T>(unsigned int)> windowEventsCallback = nullptr;
 
     // Vulkan
 	VkInstance instance;                // Vulkan instance
@@ -119,6 +120,7 @@ public:
     bool init(uint32_t width, uint32_t height, std::string title);
     bool initGUI();
     bool loadScene(std::string file_path);
+    void setWindowEventsCallback(std::function<void(ArrayList<SDL_Event>&)> func) { windowEventsCallback = func; }
 
     // -- Status Functions --
     bool isRunning() { return is_initialized && !sdl_quit; }
@@ -181,8 +183,7 @@ private:
     void createMeshPipelines();
     void createMaterialPipelines();
 
-
-
+    // -- Friends --
     friend class phVkScene<T>;
     friend class phVkMesh<T>;
     friend class phVkMaterial<T>;
@@ -239,32 +240,34 @@ template <typename T>
 void phVkEngine<T>::run()
 {
     SDL_Event sdl_event;
+    ArrayList<SDL_Event> sdl_events;
 
     // -- Handle SDL Events --
     while (SDL_PollEvent(&sdl_event) != 0)  // Until queue is empty
     {
         switch (sdl_event.type)
         {
+            // Window Events
         case SDL_EVENT_QUIT:
             sdl_quit = true;
             break;
-
         case SDL_EVENT_WINDOW_MINIMIZED:
             stop_rendering = true;
             break;
-
         case SDL_EVENT_WINDOW_RESTORED:
             stop_rendering = false;
             break;
-
-        // Key/mouse callbacks
-        // TODO
         }
 
         // Send SDL event to imgui for handling
         //ImGui_ImplSDL3_ProcessEvent(&sdl_event);
+
+		sdl_events.push(sdl_event);
     }
 
+    // -- Events Callback --
+    if (windowEventsCallback)
+        windowEventsCallback(sdl_events);
 
     // -- Window Resize --
     if (resize_requested)
