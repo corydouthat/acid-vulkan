@@ -54,7 +54,7 @@ private:
 
     // SDL / Window
     SDL_Window* window = nullptr;
-    std::function<Mat4<T>(unsigned int)> windowEventsCallback = nullptr;
+    std::function<void(ArrayList<SDL_Event>&)> windowEventsCallback = nullptr;
 
     // Vulkan
 	VkInstance instance;                // Vulkan instance
