@@ -281,6 +281,11 @@ void phVkEngine<T>::run()
     updateScene();
 
 
+    // -- Update Cameras --
+	for (unsigned int i = 0; i < cameras.getCount(); i++)
+		cameras[i].update();
+
+
     // -- Draw --
     draw();
 

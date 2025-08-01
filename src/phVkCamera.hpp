@@ -12,6 +12,32 @@
 // TODO: Switch to Quaternions to avoid Gimbal Lock?
 
 template <typename T = float>
+struct phVkAutoCamConfig
+{
+	std::function<Mat4<T>(unsigned int)> getExtTarget = nullptr;	// Callback for external follow target
+	std::function<Mat4<T>(unsigned int)> getExtParent = nullptr;	// Callback for external camera parent
+	unsigned int target_index = 0;	// Index for external target obj
+	unsigned int parent_index = 0;	// Index for external parent obj
+	Vec3<T> target_offset;		// Offset from external target position
+	Vec3<T> parent_offset;		// Offset from external parent position
+	Vec3<T> follow_vector;		// Vector from follow target to camera - if zero, follow is look only
+	Vec3<T> target_up;			// Netural up vector for target, to be transformed if roll_follow = true
+	bool follow = false;		// If true, camera will follow the target
+	bool look_follow = false;	// If true, camera will look at the target, even if follow = false
+	bool roll_follow = false;	// If true, camera will roll to match follow target's roll
+	bool parent_track = false;	// If true, camera position will track parent (overrides follow)
+	T dolly_range = 0;			// Slop range for dolly (+/- distance along follow_vector)
+	T pan_range = 0;			// Slop range for pan (+/-radians, relative to up vector)
+	T tilt_range = 0;			// Slop range for tilt (+/-radians, relative to up vector)
+	T roll_range = 0;			// Slop range for roll (+/-radians, relative to up vector)
+	T dolly_speed = 0;			// Max dolly error correction speed (+/- units per second, 0 or infinity is instantaneous)
+	T pan_speed = 0;			// Max pan error correction speed (+/- radians per second, 0 or infinity is instantaneous)
+	T tilt_speed = 0;			// Max tilt error correction speed (+/- radians per second, 0 or infinity is instantaneous)
+	T roll_speed = 0;			// Max roll error correction speed (+/- radians per second, 0 or infinity is instantaneous)
+};
+
+
+template <typename T = float>
 class phVkCamera
 {
 private:
@@ -26,6 +52,8 @@ private:
 	bool cam_right_valid;
 	bool cam_up_valid;
 	bool lookat_valid;
+	phVkAutoCamConfig<T> auto_cam;
+	bool auto_cam_enable = false;
 public:
 	phVkCamera();
 	phVkCamera(Vec3<T> p, Vec3<T> t, Vec3<T> up = Vec3<T>(0, 1, 0));
@@ -55,6 +83,13 @@ public:
 	void pan(T angle);
 	//void roll(T angle);
 	//void zoom(T zoom);
+
+
+	// Automatic Camera Movement
+	void setupAutoCam(phVkAutoCamConfig<T> config) { auto_cam = config; }
+	void startAutoCam() { auto_cam_enable = true; }
+	void stopAutoCam() { auto_cam_enable = false; }
+	void update();
 };
 
 // ****Camera IMPLEMENTATION****
@@ -308,6 +343,30 @@ void phVkCamera<T>::pan(T angle)
 	Mat3<T> rot_mat = Mat3<T>::rot(-angle, getCamUp());
 	Vec3<T> t_dir = rot_mat * -getCamDir();
 	target = pos + t_dir * (target - pos).len();
+
+	cam_dir_valid = cam_right_valid = cam_up_valid = lookat_valid = false;
+}
+
+// Update auto camera (follow / parent)
+template <typename T>
+void phVkCamera<T>::update()
+{
+	if (!auto_cam_enable)
+		return;
+
+	Mat4<T> ext_target;
+	Mat4<T> ext_parent;
+
+	if (auto_cam.getExtTarget)
+		ext_target = auto_cam.getExtTarget(auto_cam.target_index);
+
+	if (auto_cam.getExtParent)
+		ext_parent = auto_cam.getExtParent(auto_cam.parent_index);
+
+	target = ext_target.getTransl() + auto_cam.target_offset;
+	pos = ext_target.getTransl() + ext_target.getSub() * auto_cam.follow_vector;
+
+	// TODO:flag checks and everything else
 
 	cam_dir_valid = cam_right_valid = cam_up_valid = lookat_valid = false;
 }
