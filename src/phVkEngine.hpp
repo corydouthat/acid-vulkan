@@ -283,7 +283,7 @@ void phVkEngine<T>::run()
 
     // -- Update Cameras --
 	for (unsigned int i = 0; i < cameras.getCount(); i++)
-		cameras[i].update();
+		cameras[i].update(1.0f / 60.f);  // TODO: add real time
 
 
     // -- Draw --

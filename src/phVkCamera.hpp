@@ -8,8 +8,8 @@
 
 // TODO: Add support for roll
 // TODO: Add support for field of view and zoom
-// TODO: MAYBE add function to generate perspective projection matrix? / view + perspective?
-// TODO: Switch to Quaternions to avoid Gimbal Lock?
+// TODO: MAYBE add function to generate perspective projection matrix? / view + perspective? (already added perspective?)
+// TODO: Switch to Quaternions to avoid Gimbal Lock? (N/A?)
 
 template <typename T = float>
 struct phVkAutoCamConfig
@@ -26,14 +26,16 @@ struct phVkAutoCamConfig
 	bool look_follow = false;	// If true, camera will look at the target, even if follow = false
 	bool roll_follow = false;	// If true, camera will roll to match follow target's roll
 	bool parent_track = false;	// If true, camera position will track parent (overrides follow)
+	T target_range = 0;			// Slop range for target (+/- distance from target position)
 	T dolly_range = 0;			// Slop range for dolly (+/- distance along follow_vector)
 	T pan_range = 0;			// Slop range for pan (+/-radians, relative to up vector)
 	T tilt_range = 0;			// Slop range for tilt (+/-radians, relative to up vector)
 	T roll_range = 0;			// Slop range for roll (+/-radians, relative to up vector)
-	T dolly_speed = 0;			// Max dolly error correction speed (+/- units per second, 0 or infinity is instantaneous)
-	T pan_speed = 0;			// Max pan error correction speed (+/- radians per second, 0 or infinity is instantaneous)
-	T tilt_speed = 0;			// Max tilt error correction speed (+/- radians per second, 0 or infinity is instantaneous)
-	T roll_speed = 0;			// Max roll error correction speed (+/- radians per second, 0 or infinity is instantaneous)
+	T target_speed = 0;			// Max target error correction speed (+/- units per second)
+	T dolly_speed = 0;			// Max dolly error correction speed (+/- units per second)
+	T pan_speed = 0;			// Max pan error correction speed (+/- radians per second)
+	T tilt_speed = 0;			// Max tilt error correction speed (+/- radians per second)
+	T roll_speed = 0;			// Max roll error correction speed (+/- radians per second)
 };
 
 
@@ -89,7 +91,7 @@ public:
 	void setupAutoCam(phVkAutoCamConfig<T> config) { auto_cam = config; }
 	void startAutoCam() { auto_cam_enable = true; }
 	void stopAutoCam() { auto_cam_enable = false; }
-	void update();
+	void update(T dt);
 };
 
 // ****Camera IMPLEMENTATION****
@@ -349,7 +351,7 @@ void phVkCamera<T>::pan(T angle)
 
 // Update auto camera (follow / parent)
 template <typename T>
-void phVkCamera<T>::update()
+void phVkCamera<T>::update(T dt)
 {
 	if (!auto_cam_enable)
 		return;
@@ -363,10 +365,130 @@ void phVkCamera<T>::update()
 	if (auto_cam.getExtParent)
 		ext_parent = auto_cam.getExtParent(auto_cam.parent_index);
 
-	target = ext_target.getTransl() + auto_cam.target_offset;
-	pos = ext_target.getTransl() + ext_target.getSub() * auto_cam.follow_vector;
+	// Look Follow
+	if (auto_cam.look_follow || auto_cam.follow)
+	{
+		Vec3<T> target_vector = ext_target.getTransl() + 
+			ext_target.getSub() * auto_cam.target_offset - target;
+		if (auto_cam.target_range == 0)
+			target += target_vector;
+		else
+		{
+			T target_error = target_vector.len();
+			T correction = 0;
 
-	// TODO:flag checks and everything else
+			if (target_error > abs(auto_cam.target_range))
+				correction += target_error - abs(auto_cam.target_range);
+
+			if (min(target_error, abs(auto_cam.target_range)) > abs(auto_cam.target_speed) * dt)
+				correction += abs(auto_cam.target_speed) * dt;
+			else
+				correction += min(target_error, abs(auto_cam.target_range));
+
+			target += target_vector.norm() * correction;
+		}
+	}
+
+	// Parent Track
+	if (auto_cam.parent_track && auto_cam.getExtParent)
+	{
+		pos = ext_parent.getTransl() + ext_parent.getSub() * auto_cam.parent_offset;
+		
+		// TODO: add a way to choose whether the target remains fixed (or follows the target obj),
+		//		 or whether it revolves based on the rotation of the parent object
+	    // TODO: could consider adding roll (up) follow to this as an option
+	}
+	// Target Follow
+	else if (auto_cam.follow && auto_cam.getExtTarget)
+	{
+		// Up Vector / Roll Follow
+		if (auto_cam.roll_follow)
+			up_world = ext_target.getSub() * auto_cam.target_up.norm();
+		else
+			up_world = auto_cam.target_up.norm();	// TBD
+
+		// Dolly Follow (along separation vector)
+		Vec3<T> separation = pos - target;
+		if (auto_cam.dolly_range == 0)
+			separation = separation.norm() * auto_cam.follow_vector.len();
+		else
+		{
+			T dolly_error = auto_cam.follow_vector.len() - separation.len();
+			T correction = 0;
+
+			if (abs(dolly_error) > 0)
+			{
+				if (abs(dolly_error) > abs(auto_cam.dolly_range))
+					correction += abs(dolly_error) - abs(auto_cam.dolly_range);
+
+				if (min(abs(dolly_error), abs(auto_cam.dolly_range)) > abs(auto_cam.dolly_speed) * dt)
+					correction += abs(auto_cam.dolly_speed) * dt;
+				else
+					correction += min(abs(dolly_error), abs(auto_cam.dolly_range));
+
+				separation += separation.norm() * correction * dolly_error / abs(dolly_error);
+			}
+		}
+
+		Vec3<T> follow = ext_target.getSub() * auto_cam.follow_vector;
+		if (follow * up_world < 0)
+			follow += 2 * abs(follow * up_world) * up_world;	// Correct for up direction
+		Vec3<T> pan_axis = up_world;
+		Vec3<T> tilt_axis = (follow % pan_axis).norm();
+
+		// Pan Follow
+		T pan_error = Vec3<T>::angle(follow - pan_axis * (follow * pan_axis),
+			separation - pan_axis * (separation * pan_axis));	// Projected onto pan_axis rotation plane
+		if (auto_cam.pan_range != 0)
+		{
+			T correction = 0;
+
+			if (pan_error > abs(auto_cam.pan_range))
+				correction += pan_error - abs(auto_cam.pan_range);
+
+			if (min(pan_error, abs(auto_cam.pan_range)) > abs(auto_cam.pan_speed) * dt)
+				correction += abs(auto_cam.pan_speed) * dt;
+			else
+				correction += min(pan_error, abs(auto_cam.pan_range));
+
+			pan_error = correction;
+		}
+		// Check sign of angle
+		if ((follow % separation) * pan_axis >= 0)
+			pan_error = -abs(pan_error);
+		else
+			pan_error = abs(pan_error);
+
+		// Tilt Follow
+		T tilt_error = Vec3<T>::angle(follow - tilt_axis * (follow * tilt_axis),
+			separation - tilt_axis * (separation * tilt_axis));	// Projected onto tilt_axis rotation plane
+		if (auto_cam.tilt_range != 0)
+		{
+			T correction = 0;
+
+			if (tilt_error > abs(auto_cam.tilt_range))
+				correction += tilt_error - abs(auto_cam.tilt_range);
+
+			if (min(tilt_error, abs(auto_cam.tilt_range)) > abs(auto_cam.tilt_speed) * dt)
+				correction += abs(auto_cam.tilt_speed) * dt;
+			else
+				correction += min(tilt_error, abs(auto_cam.tilt_range));
+
+			tilt_error = correction;
+		}
+		// Check sign of angle
+		if ((follow % separation) * tilt_axis >= 0)
+			tilt_error = -abs(tilt_error);
+		else
+			tilt_error = abs(tilt_error);
+
+		// Apply Pan and Tilt Corrections
+		// TODO: can this be done more efficiently by combining rotation vectors?
+		separation = Mat3<T>::rot(tilt_error, tilt_axis) * 
+			Mat3<T>::rot(pan_error, pan_axis) * separation;
+
+		pos = target + separation;
+	}
 
 	cam_dir_valid = cam_right_valid = cam_up_valid = lookat_valid = false;
 }
