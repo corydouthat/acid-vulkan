@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 
 #include <vulkan/vulkan.h>
 
@@ -1353,7 +1354,7 @@ template <typename T>
 void phVkEngine<T>::createBackgroundPipelines()
 {
     if (background_pipeline.device == 0)
-        background_pipeline = phVkPipeline(device, phVkPipelineType::COMPUTE, getViewport(), getScissor());
+        background_pipeline = std::move(phVkPipeline(device, phVkPipelineType::COMPUTE, getViewport(), getScissor()));
 
     // Shader modules
     background_pipeline.loadComputeShader("../../../../../acid-vulkan/shaders/gradient_color.comp.spv");   // TODO: change

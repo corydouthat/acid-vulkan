@@ -53,8 +53,11 @@ public:
 
     phVkTexture();
     ~phVkTexture();
-    phVkTexture(const phVkTexture&) = delete;   // Disable copy constructor
-    const phVkTexture& operator=(const phVkTexture& other);
+    phVkTexture(const phVkTexture&) = delete;               // Disable copy
+    phVkTexture& operator=(const phVkTexture&) = delete;    // Disable copy
+    phVkTexture(phVkTexture&& other) noexcept = default;    // Allow move
+    phVkTexture& operator=(phVkTexture&& other) noexcept = default; // Allow move
+    //const phVkTexture& operator=(const phVkTexture& other);
 
     // Functions
     bool loadTexture(const aiScene* scene, const std::string& texture_path, 
@@ -90,26 +93,26 @@ phVkTexture<T>::~phVkTexture()
     }
 }
 
-template <typename T>
-const phVkTexture<T>& phVkTexture<T>::operator=(const phVkTexture& other)
-{
-    path = other.path;
-
-    is_loaded = other.is_loaded;
-
-    width = other.width;
-    height = other.height;
-    channels = other.channels;
-
-    if (is_loaded)
-        memcpy(data, other.data, width * height * channels);
-    else
-        data = nullptr;
-
-    // TODO: copy Vulkan data
-
-    return *this;
-}
+//template <typename T>
+//const phVkTexture<T>& phVkTexture<T>::operator=(const phVkTexture& other)
+//{
+//    path = other.path;
+//
+//    is_loaded = other.is_loaded;
+//
+//    width = other.width;
+//    height = other.height;
+//    channels = other.channels;
+//
+//    if (is_loaded)
+//        memcpy(data, other.data, width * height * channels);
+//    else
+//        data = nullptr;
+//
+//    // TODO: copy Vulkan data
+//
+//    return *this;
+//}
 
 
 // Function to load a texture from a file
@@ -358,6 +361,11 @@ public:
         material_buffer = {};
         material_descriptor_set = VK_NULL_HANDLE;
     }
+
+    phVkMaterial(const phVkMaterial&) = delete;               // Disable copy
+    phVkMaterial& operator=(const phVkMaterial&) = delete;    // Disable copy
+    phVkMaterial(phVkMaterial&& other) noexcept = default;    // Allow move
+    phVkMaterial& operator=(phVkMaterial&& other) noexcept = default; // Allow move
 
     ~phVkMaterial()
     {

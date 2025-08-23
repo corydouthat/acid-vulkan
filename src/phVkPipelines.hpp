@@ -130,6 +130,10 @@ public:
 	phVkPipeline();
 	phVkPipeline(VkDevice device, phVkPipelineType type, VkViewport viewport, VkRect2D scissor);
 	~phVkPipeline();
+	phVkPipeline(const phVkPipeline&) = delete;               // Disable copy
+	phVkPipeline& operator=(const phVkPipeline&) = delete;    // Disable copy
+	phVkPipeline(phVkPipeline&& other) noexcept = default;    // Allow move
+	phVkPipeline& operator=(phVkPipeline&& other) noexcept = default; // Allow move
 
 	// Setup
 	void setType(phVkPipelineType type);
