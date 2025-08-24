@@ -67,6 +67,12 @@ public:
     phVkMesh();
     ~phVkMesh() { vulkanCleanup(); }
 
+	// Disable copy and assign to protect Vulkan resources
+    phVkMesh<T>(const phVkMesh<T>& copy) = delete;
+    phVkMesh<T>(phVkMesh<T>&& move) noexcept = default;
+    const phVkMesh<T>& operator =(const phVkMesh<T>& copy) = delete;
+    phVkMesh<T>& operator =(phVkMesh<T>&& move) noexcept = default;
+
     // Functions
     void processMesh(const aiMesh* mesh, const aiScene* scene, unsigned int materials_offset = 0);
     void getMeshData(ArrayList<Vec3<T>>* v_out, ArrayList<unsigned int>* i_out, bool* tri_format, bool* ccw_format);

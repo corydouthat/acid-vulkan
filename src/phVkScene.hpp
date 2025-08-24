@@ -33,6 +33,15 @@ public:
 
 	ArrayList<phVkModel<T>> models;
 
+    
+    // -- Constructors and Operators --
+	phVkScene<T>() = default;  // Default constructor
+    // phVkMaterial is non-copyable so disable copy/assign and enable move
+    phVkScene<T>(const phVkScene<T>& copy) = delete;
+    phVkScene<T>(phVkScene<T>&& move) noexcept = default;
+    const phVkScene<T>& operator =(const phVkScene<T>& copy) = delete;
+    phVkScene<T>& operator =(phVkScene<T>&& move) noexcept = default;
+
     // -- Functions --
     void load(std::string path);
     void processNode(aiNode* node, const aiScene* scene, Mat4<T> global_transform = Mat4<T>(), 

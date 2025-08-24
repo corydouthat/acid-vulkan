@@ -216,7 +216,7 @@ bool phVkEngine<T>::init(uint32_t width, uint32_t height, std::string title)
 template <typename T>
 bool phVkEngine<T>::loadScene(std::string file_path)
 {
-    int scene = scenes.push(phVkScene<T>());
+    int scene = scenes.push(std::move(phVkScene<T>()));
 
     scenes[scene].load(file_path);
 
