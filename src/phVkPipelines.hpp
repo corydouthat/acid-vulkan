@@ -647,7 +647,7 @@ void phVkPipeline::setDefaults()
 
 void phVkPipeline::destroyShaderModules()
 {
-	for (int i = 0; i < shader_stages.getCount(); i++)
+	for (unsigned int i = 0; i < shader_stages.getCount(); i++)
 	{
 		vkDestroyShaderModule(device, shader_stages[i].module, nullptr);
 	}

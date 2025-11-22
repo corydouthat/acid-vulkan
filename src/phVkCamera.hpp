@@ -231,14 +231,14 @@ Mat4<T> phVkCamera<T>::getLookAt()
 
 
 		cache_lookat_mat = Mat4<T>(
-			Vec4<T>(cache_cam_right.x, cache_cam_up.x, cache_cam_dir.x, 0),	// Column 1
-			Vec4<T>(cache_cam_right.y, cache_cam_up.y, cache_cam_dir.y, 0),	// Column 2
-			Vec4<T>(cache_cam_right.z, cache_cam_up.z, cache_cam_dir.z, 0),	// Column 3
-			Vec4<T>(0, 0, 0, 1)												// Column 4
+			Vec4<T>((T)cache_cam_right.x, (T)cache_cam_up.x, (T)cache_cam_dir.x, (T)0.0),	// Column 1
+			Vec4<T>((T)cache_cam_right.y, (T)cache_cam_up.y, (T)cache_cam_dir.y, (T)0.0),	// Column 2
+			Vec4<T>((T)cache_cam_right.z, (T)cache_cam_up.z, (T)cache_cam_dir.z, (T)0.0),	// Column 3
+			Vec4<T>(0.0, 0.0, 0.0, 1.0)											// Column 4
 		);
 
 		Mat4<T> temp_pos_mat;	// Identity
-		temp_pos_mat[3] = Vec4<T>(-pos.x, -pos.y, -pos.z, 1);	// Column 4
+		temp_pos_mat[3] = Vec4<T>((T)(-pos.x), (T)(-pos.y), (T)(-pos.z), (T)1.0);	// Column 4
 
 		cache_lookat_mat = cache_lookat_mat * temp_pos_mat;
 

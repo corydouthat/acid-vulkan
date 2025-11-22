@@ -178,12 +178,12 @@ void phVkScene<T>::processNode(aiNode* node, const aiScene* scene, Mat4<T> globa
 template <typename T>
 void phVkScene<T>::initVulkan(phVkEngine<T>* engine)
 {
-    for (int i = 0; i < meshes.getCount(); i++)
+    for (unsigned int i = 0; i < meshes.getCount(); i++)
     {
         meshes[i].initVulkan(engine);
     }
 
-    for (int i = 0; i < materials.getCount(); i++)
+    for (unsigned int i = 0; i < materials.getCount(); i++)
     {
         materials[i].initVulkan(engine);
     }

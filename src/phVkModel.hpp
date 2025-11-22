@@ -175,7 +175,7 @@ void phVkMesh<T>::processMesh(const aiMesh* mesh, const aiScene* scene, unsigned
         else
         {
             // TODO: add configurable default value
-            vertex.c = Vec4<T>(191.0 / 255.0f, 64.0 / 255.0f, 191.0 / 255.0f, 1.0f);
+            vertex.c = Vec4<T>((T)191.0 / (T)255.0f, (T)64.0 / (T)255.0, (T)191.0 / (T)255.0, (T)1.0);
         }
 
         vertices.push(vertex);

@@ -759,10 +759,10 @@ void phVkEngine<T>::drawBackground(VkCommandBuffer cmd)
 {
     // TODO: temporary
     Vec4<T> compute_push_constants[4];
-    compute_push_constants[0] = Vec4<T>(0.1, 0.2, 0.4, 0.97);
-    compute_push_constants[1] = Vec4<T>(0, 0, 0, 0);
-    compute_push_constants[2] = Vec4<T>(0, 0, 0, 0);
-    compute_push_constants[3] = Vec4<T>(0, 0, 0, 0);
+    compute_push_constants[0] = Vec4<T>((T)0.1, (T)0.2, (T)0.4, (T)0.97);
+    compute_push_constants[1] = Vec4<T>((T)0, (T)0, (T)0, (T)0);
+    compute_push_constants[2] = Vec4<T>((T)0, (T)0, (T)0, (T)0);
+    compute_push_constants[3] = Vec4<T>((T)0, (T)0, (T)0, (T)0);
 
     // -- Bind Pipeline --
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, background_pipeline.pipeline);
@@ -785,8 +785,8 @@ void phVkEngine<T>::drawBackground(VkCommandBuffer cmd)
     // -- Dispatch --
     // 16x16 workgroup
     // TODO: confirm getDrawImageExtent() - vkguide.dev uses getWindowExtent()
-    vkCmdDispatch(cmd, std::ceil(getDrawImageExtent().width / 16.0),
-        std::ceil(getDrawImageExtent().height / 16.0), 1);
+    vkCmdDispatch(cmd, uint32_t(std::ceil(getDrawImageExtent().width / 16.0)),
+        uint32_t(std::ceil(getDrawImageExtent().height / 16.0)), 1);
 }
 
 
@@ -1223,7 +1223,7 @@ void phVkEngine<T>::destroySwapchain()
     vkDestroySwapchainKHR(device, swapchain, nullptr);
 
     // Destroy swapchain resources
-    for (int i = 0; i < swapchain_image_views.getCount(); i++)
+    for (unsigned int i = 0; i < swapchain_image_views.getCount(); i++)
     {
         vkDestroyImageView(device, swapchain_image_views[i], nullptr);
     }

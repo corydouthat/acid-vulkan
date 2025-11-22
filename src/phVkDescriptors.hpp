@@ -203,7 +203,7 @@ void phVkDescriptorAllocator::init(VkDevice device, uint32_t max_sets, std::span
 	
     VkDescriptorPool new_pool = createPool(device, max_sets, pool_ratios);
 
-    sets_per_pool = max_sets * 1.5; // Grow it next allocation
+    sets_per_pool = uint32_t(max_sets * 1.5); // Grow it next allocation
 
     ready_pools.push_back(new_pool);
 }
@@ -252,7 +252,7 @@ VkDescriptorPool phVkDescriptorAllocator::getPool(VkDevice device)
 	    //need to create a new pool
 	    new_pool = createPool(device, sets_per_pool, ratios);
 
-	    sets_per_pool = sets_per_pool * 1.5;
+	    sets_per_pool = uint32_t(sets_per_pool * 1.5);
 	    if (sets_per_pool > 4092) 
         {
 		    sets_per_pool = 4092;
