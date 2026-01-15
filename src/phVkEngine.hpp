@@ -22,9 +22,9 @@
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
 
-#include "Vec.hpp"
-#include "Quat.hpp"
-#include "Mat.hpp"
+#include "vec.h"
+#include "quat.h"
+#include "mat.h"
 #include "array_list.hpp"
 
 #include "phVkTypes.hpp"
