@@ -22,9 +22,9 @@
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
 
-#include "Vec.hpp"
-#include "Quat.hpp"
-#include "Mat.hpp"
+#include "vec.h"
+#include "quat.h"
+#include "mat.h"
 #include "array_list.hpp"
 
 #include "phVkTypes.hpp"
@@ -1108,7 +1108,8 @@ void phVkEngine<T>::initDescriptors()
     std::vector<phVkDescriptorAllocator::PoolSizeRatio> sizes = {
 		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 },
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 } };
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 } };
 
     // Allocate 10 sets
     global_descriptor_allocator.init(device, 10, sizes);
@@ -1357,7 +1358,11 @@ void phVkEngine<T>::createBackgroundPipelines()
         background_pipeline = std::move(phVkPipeline(device, phVkPipelineType::COMPUTE, getViewport(), getScissor()));
 
     // Shader modules
+<<<<<<< Updated upstream
     background_pipeline.loadComputeShader("../../../../../acid-vulkan/shaders/gradient_color.comp.spv");   // TODO: change
+=======
+    background_pipeline.loadComputeShader("../../../../acid-vulkan/shaders/gradient_color.comp.spv");   // TODO: change
+>>>>>>> Stashed changes
 
     // Push constants
     VkPushConstantRange background_push_range{};
