@@ -1358,11 +1358,7 @@ void phVkEngine<T>::createBackgroundPipelines()
         background_pipeline = std::move(phVkPipeline(device, phVkPipelineType::COMPUTE, getViewport(), getScissor()));
 
     // Shader modules
-<<<<<<< Updated upstream
-    background_pipeline.loadComputeShader("../../../../../acid-vulkan/shaders/gradient_color.comp.spv");   // TODO: change
-=======
     background_pipeline.loadComputeShader("../../../../acid-vulkan/shaders/gradient_color.comp.spv");   // TODO: change
->>>>>>> Stashed changes
 
     // Push constants
     VkPushConstantRange background_push_range{};

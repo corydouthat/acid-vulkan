@@ -15,8 +15,8 @@
 
 #include "array_list.hpp"
 
-#include "vec.hpp"
-#include "mat.hpp"
+#include "vec.h"
+#include "mat.h"
 
 #include "phVkModel.hpp"
 #include "phVkMaterial.hpp"
