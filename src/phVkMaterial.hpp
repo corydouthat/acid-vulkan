@@ -22,8 +22,8 @@
 
 #include "array_list.hpp"
 
-#include "vec.h"
-#include "mat.h"
+#include "vec.hpp"
+#include "mat.hpp"
 
 
 template <typename T>

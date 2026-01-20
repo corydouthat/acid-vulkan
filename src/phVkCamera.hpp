@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "vec.h"
-#include "mat.h"
+#include "vec.hpp"
+#include "mat.hpp"
 
 // TODO: Add support for roll
 // TODO: Add support for field of view and zoom
