@@ -6,7 +6,13 @@
 // TODO: make most of these things configurable?
 
 // Debug
+// Validation layers have a performance cost, so only enable them in debug builds
+// Note: RelWithDebInfo defines NDEBUG under MSVC, so it counts as release
+#ifdef NDEBUG
+constexpr bool use_validation_layers = false;
+#else
 constexpr bool use_validation_layers = true;
+#endif
 
 // Number of swapchain images
 constexpr unsigned int FRAME_BUFFER_COUNT = 2;
