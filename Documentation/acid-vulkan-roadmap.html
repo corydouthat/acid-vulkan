@@ -1,0 +1,175 @@
+<title>Acid Vulkan Roadmap</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column; order table, then one checklist block per group, then bugs, then later */
+:root {
+  --bg: #f6f7f9; --fg: #1c2027; --muted: #5d6673; --rule: #d3d8de; --panel: #ffffff;
+  --accent: #5a4fa2; --accent-soft: #e8e5f4; --code-bg: #eceef2; --done: #9aa1ab;
+  --mono: "JetBrains Mono", Consolas, monospace; --sans: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15171c; --fg: #e4e6eb; --muted: #9aa2ad; --rule: #2d323a; --panel: #1c1f26;
+  --accent: #a89cf0; --accent-soft: #272340; --code-bg: #232730; --done: #5f6670; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #15171c; --fg: #e4e6eb; --muted: #9aa2ad; --rule: #2d323a; --panel: #1c1f26;
+  --accent: #a89cf0; --accent-soft: #272340; --code-bg: #232730; --done: #5f6670; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15.5px; line-height: 1.5; margin: 0;
+  padding-block: 28px 60px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+main { max-width: 820px; margin: 0 auto; }
+h1 { font-size: 24px; margin: 0 0 4px; text-wrap: balance; }
+.meta { color: var(--muted); font-family: var(--mono); font-size: 11.5px; margin-bottom: 18px; } .meta a { color: var(--accent); }
+h2 { font-size: 18px; margin: 30px 0 8px; padding-bottom: 5px; border-bottom: 2px solid var(--accent); text-wrap: balance; display: flex; align-items: baseline; gap: 10px; }
+h2 .count { font-family: var(--mono); font-size: 12px; color: var(--accent); font-weight: 400; }
+h2 .tag { font-family: var(--mono); font-size: 11px; padding: 1px 6px; border-radius: 3px; background: var(--accent-soft); color: var(--accent); font-weight: 400; }
+p { margin: 6px 0 10px; max-width: 70ch; }
+code { font-family: var(--mono); font-size: 13px; background: var(--code-bg); padding: 1px 4px; border-radius: 3px; }
+.tbl { overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; background: var(--panel); margin: 8px 0 14px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid var(--rule); }
+th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--accent-soft); }
+tr:last-child td { border-bottom: none; }
+td.ph { font-weight: 700; white-space: nowrap; }
+ul.list { list-style: none; margin: 4px 0 8px; padding: 0; max-width: 76ch; }
+ul.list ul.list { margin: 2px 0 2px 26px; }
+ul.list li { margin: 0; }
+label.item { display: flex; align-items: flex-start; gap: 9px; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
+label.item:hover { background: var(--accent-soft); }
+label.item input { margin: 5px 0 0; width: 15px; height: 15px; accent-color: var(--accent); flex: none; }
+label.item .t { flex: 1; }
+label.item .sub { display: block; color: var(--muted); font-size: 13.5px; }
+label.item .loc { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+li.done > label.item .t { color: var(--done); text-decoration: line-through; text-decoration-color: var(--rule); }
+li.done > label.item .sub, li.done > label.item .loc { color: var(--done); }
+.pc { font-family: var(--mono); font-size: 11px; color: var(--accent); margin-left: 6px; }
+.status { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 18px; }
+a { color: var(--accent); }
+</style>
+<main>
+<h1>Acid Vulkan Roadmap</h1>
+<div class="meta">acid-vulkan @ fresh-start a7aba00 · audited 2026-10-29 · ticks are saved on this page · companion to the <a href="https://claude.ai/artifact/Va1BBefD1HVrJRsTiSHdhM">physics roadmap</a> and the <a href="https://claude.ai/artifact/4AJf1BNm5pg88Ys8MBDigp#visualizer">visualizer design</a></div>
+
+<p>What the renderer needs so the engine layer (physics roadmap phase 1) and the visualizer (phase 3) can be built on it, in the order they block. Group A is needed before the engine layer; B before the visualizer; C is quality that can wait. Bugs at the end are things that are wrong today.</p>
+
+<div class="tbl"><table>
+<tr><th>Group</th><th>Goal</th><th>Needed by</th><th>Size</th></tr>
+<tr><td class="ph">A</td><td>What the engine layer needs: node properties from the glb, camera and timing the layer can drive, resize that works.</td><td>physics phase 1</td><td>days</td></tr>
+<tr><td class="ph">B</td><td>What the visualizer needs: a line pipeline fed from a per-frame buffer, ImGui alive, runtime models, show/hide.</td><td>physics phase 3</td><td>1–2 weeks</td></tr>
+<tr><td class="ph">C</td><td>Quality: scene unload, shader build step, fullscreen and vsync, high-DPI, stats.</td><td>later</td><td>as you go</td></tr>
+<tr><td class="ph">bugs</td><td>Wrong today, independent of the above.</td><td>–</td><td>as you go</td></tr>
+</table></div>
+
+<h2 data-group="a">A · For the engine layer <span class="tag">phVkScene · phVkCamera · phVkEngine</span><span class="count"></span></h2>
+<ul class="list">
+<li data-id="a-extras"><label class="item"><input type="checkbox" class="tick"><span class="t">Read glTF node extras (Blender custom properties) in <code>processNode</code> and keep them on the model: loop <code>node->mMetaData</code> (keys, typed values) into a small property map on <code>phVkModel</code>. Copy during the load, since the importer is a local in <code>load()</code>.<span class="sub">The bundled assimp 5.4.3 already fills <code>aiNode::mMetaData</code> from extras; Blender only writes them with "Custom Properties" ticked on export.</span><span class="loc">phVkScene.hpp:115-175, :64</span></span></label></li>
+<li data-id="a-empties"><label class="item"><input type="checkbox" class="tick"><span class="t">Keep mesh-less nodes (Blender empties) and the node hierarchy: today a node without meshes creates no model, parent indices are not kept, and the transform is flattened. Either a <code>nodes</code> list (name, global transform, parent, properties) or a model with empty <code>mesh_indices</code>, which <code>drawMesh</code> already handles.<span class="loc">phVkScene.hpp:128-163</span></span></label></li>
+<li data-id="a-camera"><label class="item"><input type="checkbox" class="tick"><span class="t">Camera owned by the engine layer: add <code>fov</code>, <code>near</code>, <code>far</code> to the camera (hard-coded 70° / 0.1 / 10000 in <code>updateScene</code> today), pass a real <code>dt</code> into <code>run()</code> instead of the fixed 1/60, and move the auto-cam config block out of <code>main.cpp</code> into the layer as is.<span class="loc">phVkEngine.hpp:554-557, :286-287 · main.cpp:50-73, :349-357</span></span></label></li>
+<li data-id="a-order"><label class="item"><input type="checkbox" class="tick"><span class="t">Update the camera before <code>updateScene()</code> in <code>run()</code>, so the matrices drawn are this frame's, not last frame's.<span class="loc">phVkEngine.hpp:282 vs :286-287</span></span></label></li>
+<li data-id="a-timing"><label class="item"><input type="checkbox" class="tick"><span class="t">Expose timing and counts: <code>getFrameNumber()</code>, a public <code>stats</code> struct (record ms, draw calls, triangles, lines) filled in <code>drawMesh</code>, which already times itself and throws the number away.<span class="loc">phVkEngine.hpp:54, :843, :889-891</span></span></label></li>
+<li data-id="a-resize"><label class="item"><input type="checkbox" class="tick"><span class="t">Handle <code>SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED</code> in the event switch and honour <code>stop_rendering</code> while minimised; today a resize only happens when the swapchain reports out-of-date, and the engine keeps drawing minimised.<span class="loc">phVkEngine.hpp:249-261, :594-597, :710-713</span></span></label></li>
+<li data-id="a-dedupe"><label class="item"><input type="checkbox" class="tick"><span class="t">Move into the engine layer what both mains duplicate: init, the frame loop and FPS limiter, scene load, camera push, cleanup, plus from the game <code>FindModel</code>, <code>GetModelMeshData</code>, the transform-callback binding and the physics-then-transforms-then-render order. The testbench is not built today and has no physics.<span class="loc">testbench/main.cpp · untitled-game/src/main.cpp:29-40, :342-357, :365-441</span></span></label></li>
+</ul>
+
+<h2 data-group="b">B · For the visualizer <span class="tag">phVkPipelines · phVkEngine · shaders</span><span class="count"></span></h2>
+<ul class="list">
+<li data-id="b-lines"><label class="item"><input type="checkbox" class="tick"><span class="t">Line pipeline next to <code>mesh_pipeline</code>: topology <code>LINE_LIST</code>, no culling, depth test on (a second object with depth off for x-ray, since only viewport and scissor are dynamic), set 0 only plus its own push constants. Line width stays 1.0 unless the <code>wideLines</code> feature is enabled.<span class="sub">The builder already supports everything needed; because the push range differs, set 0 must be rebound with the line layout, so hoist the per-frame <code>global_descriptor</code> out of <code>drawMesh</code>.</span><span class="loc">phVkPipelines.hpp:339-435 · phVkEngine.hpp:811, :1383-1436</span></span></label></li>
+<li data-id="b-shaders"><label class="item"><input type="checkbox" class="tick"><span class="t">Minimal <code>line.vert</code> / <code>line.frag</code>: set 0 scene UBO only (do not include <code>input_structures.glsl</code>, it also declares set 1), a <code>buffer_reference</code> vertex of position + colour (32 bytes), <code>gl_Position = viewproj * pos</code>, fragment outputs the colour.<span class="loc">shaders/mesh.vert, mesh.frag as the model</span></span></label></li>
+<li data-id="b-vb"><label class="item"><input type="checkbox" class="tick"><span class="t">Per-frame line vertex buffer on <code>phVkFrameData</code> (buffer, capacity, device address): written after the fence wait, grown there when needed, <code>STORAGE | SHADER_DEVICE_ADDRESS</code>, host visible. <code>createBuffer</code> never flushes, so require host-coherent memory or call <code>vmaFlushAllocation</code>.<span class="loc">phVkTypes.hpp:68-79 · phVkEngine.hpp:297-315, :578</span></span></label></li>
+<li data-id="b-draw"><label class="item"><input type="checkbox" class="tick"><span class="t">Draw the lines inside <code>drawMesh</code>'s render pass before <code>vkCmdEndRendering</code> (bind line pipeline, viewport and scissor, set 0, push, <code>vkCmdDraw</code>), or as a <code>drawLines</code> pass after it with depth <code>loadOp = LOAD</code>. Public <code>setDebugDraw(list, mask)</code> on the engine.<span class="loc">phVkEngine.hpp:636, :847-894</span></span></label></li>
+<li data-id="b-imgui"><label class="item"><input type="checkbox" class="tick"><span class="t">ImGui alive: write <code>initGUI()</code> (context, <code>ImGui_ImplSDL3_InitForVulkan</code>, <code>ImGui_ImplVulkan_Init</code> with API 1.3, graphics queue and family, image count from the swapchain, dynamic rendering with the swapchain format, its own descriptor pool since the engine's pools lack <code>FREE_DESCRIPTOR_SET_BIT</code>), uncomment the three hooks, add a <code>guiCallback</code> the app fills between <code>NewFrame</code> and <code>Render</code>, shutdown in <code>cleanup()</code>, and <code>SetMinImageCount</code> after a swapchain rebuild.<span class="loc">phVkEngine.hpp:122, :264, :573, :658, :721-754 · imgui_impl_vulkan.h:76-108</span></span></label></li>
+<li data-id="b-labels"><label class="item"><input type="checkbox" class="tick"><span class="t">Label projection helper: <code>scene_data.view_proj</code> is public; project with <code>Mat4 * Vec4</code>, drop <code>w &lt;= 0</code>, map to pixels with <code>getWindowExtent</code>, divide by ImGui's framebuffer scale on high-DPI. Use it after <code>run()</code> returns, when <code>scene_data</code> matches what was drawn.<span class="loc">phVkEngine.hpp:112, :131-137, :544-565</span></span></label></li>
+<li data-id="b-runtime"><label class="item"><input type="checkbox" class="tick"><span class="t">Model from raw arrays at runtime: an <code>addModel(scene, vertices, indices, material)</code> helper that fills a <code>phVkMesh</code>, calls that one mesh's <code>initVulkan</code> (never <code>phVkScene::initVulkan</code>, which re-uploads everything and leaks) and pushes a model with <code>transform_valid</code>. Needs a default 1×1 white texture for materials without one and <code>mesh.frag</code> multiplying by the vertex colour it currently ignores.<span class="loc">phVkModel.hpp:56-58, :241-308 · phVkMaterial.hpp:575-580 · shaders/mesh.frag</span></span></label></li>
+<li data-id="b-visible"><label class="item"><input type="checkbox" class="tick"><span class="t">Per-model <code>visible</code> flag checked in <code>drawMesh</code>; removal as hidden tombstones for now (<code>ArrayList::remove</code> shifts indices and the mesh destructor frees GPU buffers with no wait on frames in flight).<span class="loc">phVkEngine.hpp:851-856 · phVkModel.hpp:312-321</span></span></label></li>
+</ul>
+
+<h2 data-group="c">C · Quality <span class="tag">later</span><span class="count"></span></h2>
+<ul class="list">
+<li data-id="c-shaderbuild"><label class="item"><input type="checkbox" class="tick"><span class="t">Shader build step: the <code>.spv</code> files are compiled by hand and committed; add a CMake <code>add_custom_command</code> with <code>glslc</code> and a shader directory setting instead of the hard-coded <code>../../../../acid-vulkan/shaders/</code> paths.<span class="loc">phVkEngine.hpp:1361, :1389-1390 · phVkConfig.hpp</span></span></label></li>
+<li data-id="c-unload"><label class="item"><input type="checkbox" class="tick"><span class="t"><code>unloadScene(i)</code>: wait idle, remove, and a per-scene descriptor allocator reset on unload (material sets come from pools with <code>flags = 0</code> and are never freed, so every reload leaks pool space). Texture lookup uses <code>find_last_of('/')</code>, which breaks on backslash paths.<span class="loc">phVkEngine.hpp:482 · phVkMaterial.hpp:567 · phVkScene.hpp:89</span></span></label></li>
+<li data-id="c-fullscreen"><label class="item"><input type="checkbox" class="tick"><span class="t"><code>setFullscreen(bool)</code> and a runtime vsync toggle (present mode is a <code>constexpr</code> today); both need a swapchain rebuild.<span class="loc">phVkConfig.hpp:21-25 · phVkEngine.hpp:905, :1208</span></span></label></li>
+<li data-id="c-dpi"><label class="item"><input type="checkbox" class="tick"><span class="t">High-DPI and large windows: the swapchain uses logical points while <code>getRenderArea</code> uses pixels, and the draw and depth images are fixed at 2048×2048 and never rebuilt, so a bigger window is clipped then stretched by the blit.<span class="loc">phVkEngine.hpp:1004-1015, :1235-1247, :1306-1324</span></span></label></li>
+</ul>
+
+<h2 data-group="bugs">Bugs <span class="tag">as you go</span><span class="count"></span></h2>
+<ul class="list">
+<li data-id="bug-stdfunction"><label class="item"><input type="checkbox" class="tick"><span class="t"><code>std::function</code> members inside <code>ArrayList</code> elements break the relocation rule: <code>phVkModel::getExtTransform</code> and the two callbacks in <code>phVkAutoCamConfig</code>. MSVC's <code>std::function</code> keeps small callables inline with a pointer into its own body, so after <code>models</code> or <code>cameras</code> grows the pointer dangles (use after free on call, heap corruption on destroy). Latent today only because the game sets the callbacks after the last push.<span class="sub">Fix: keep callbacks out of list elements (a plain function pointer plus index, or the callback table on the engine), or document "reserve before push, set callbacks last". In Debug builds <code>std::string</code> members have the same self-pointer under iterator debugging.</span><span class="loc">phVkModel.hpp:104 · phVkCamera.hpp:17-18 · array_list.hpp:228-236</span></span></label></li>
+<li data-id="bug-ubo"><label class="item"><input type="checkbox" class="tick"><span class="t">One <code>scene_data_buffer</code> is rewritten every frame while the previous frame may still read it on the GPU (the fence waited on belongs to frame N−2); it is also never flushed, which is only safe on host-coherent memory. One buffer per <code>phVkFrameData</code> fixes both (same slot the line buffer in B will use).<span class="loc">phVkEngine.hpp:578, :816-817, :1191</span></span></label></li>
+<li data-id="bug-acquire"><label class="item"><input type="checkbox" class="tick"><span class="t">Swapchain edge cases: returning early on <code>VK_SUBOPTIMAL_KHR</code> at acquire leaves the acquire semaphore signalled for the next frame; present ignores suboptimal and errors; a minimised window keeps drawing (<code>stop_rendering</code> never read) and rebuilds a 0×0 swapchain where the unchecked <code>.value()</code> asserts and <code>updateScene</code> divides by zero height.<span class="loc">phVkEngine.hpp:256-259, :594-600, :706-714, :1212, :556</span></span></label></li>
+<li data-id="bug-material"><label class="item"><input type="checkbox" class="tick"><span class="t">Material set: binding 1 is left unwritten when a material has no diffuse texture while <code>mesh.frag</code> always samples it (undefined, validation error); binding 2 receives the specular texture but the shader calls it metal-rough; the C++ material UBO is 32 bytes against a 40-byte GLSL block. Needs the default white texture from B anyway.<span class="loc">phVkMaterial.hpp:292-296, :573-580 · shaders/input_structures.glsl:19-24 · shaders/mesh.frag:56</span></span></label></li>
+<li data-id="bug-reinit"><label class="item"><input type="checkbox" class="tick"><span class="t">Second <code>initVulkan</code> on a mesh, material or texture overwrites the GPU handles without destroying the old ones; <code>phVkMesh::vulkanCleanup</code> does not null its handles, so cleanup plus destructor destroys twice; the defaulted moves of mesh, material, texture and pipeline copy owning handles without nulling the source. Nothing triggers these today; <code>addModel</code> in B will.<span class="loc">phVkModel.hpp:242-321 · phVkMaterial.hpp:207-250, :502-585</span></span></label></li>
+<li data-id="bug-imgui"><label class="item"><input type="checkbox" class="tick"><span class="t"><code>renderImGui</code>: <code>ImGui::End()</code> only inside <code>if (Begin())</code> (ImGui requires it every time, a collapsed window asserts) and <code>Text("Frame Number: ", frame_number)</code> has no <code>%d</code>. <code>drawImgui</code> uses <code>getRenderArea()</code> where the swapchain extent is meant.<span class="loc">phVkEngine.hpp:727-731, :740-754</span></span></label></li>
+<li data-id="bug-camera"><label class="item"><input type="checkbox" class="tick"><span class="t"><code>updateScene</code> indexes <code>cameras[active_camera]</code> with no empty check, so <code>run()</code> before a camera is pushed reads out of bounds.<span class="loc">phVkEngine.hpp:551</span></span></label></li>
+<li data-id="bug-triangulate"><label class="item"><input type="checkbox" class="tick"><span class="t">Assimp import runs without <code>aiProcess_Triangulate</code> (commented out), so any quad or n-gon face throws during load; <code>loadScene</code> then reports true regardless and ignores a failed push.<span class="loc">phVkScene.hpp:68, :82 · phVkModel.hpp:199 · phVkEngine.hpp:219-225</span></span></label></li>
+<li data-id="bug-embedded"><label class="item"><input type="checkbox" class="tick"><span class="t">Embedded textures: <code>GetEmbeddedTexture</code> can return null and is dereferenced; uncompressed embedded data (raw BGRA, <code>mHeight &gt; 0</code>) is handed to <code>stbi_load_from_memory</code>, which cannot decode it.<span class="loc">phVkMaterial.hpp:134-152</span></span></label></li>
+<li data-id="bug-vma"><label class="item"><input type="checkbox" class="tick"><span class="t"><code>createBuffer</code> tests <code>memory_usage &amp; VMA_MEMORY_USAGE_GPU_ONLY</code> as a bit flag on an enum (CPU_TO_GPU = 3 also matches), and <code>drawMesh</code> reads <code>allocation->GetMappedData()</code> from VMA internals instead of <code>info.pMappedData</code>.<span class="loc">phVkEngine.hpp:358, :816</span></span></label></li>
+<li data-id="bug-headers"><label class="item"><input type="checkbox" class="tick"><span class="t"><code>VMA_IMPLEMENTATION</code> and <code>STB_IMAGE_IMPLEMENTATION</code> are defined in headers, and phVkDescriptors, phVkPipelines, phVkInitDefaults and phVkImages define non-inline, non-template functions, so including the engine from two source files of one program is a multiple-definition link error. Matters as soon as the engine layer has more than one .cpp.<span class="loc">phVkEngine.hpp:18 · phVkImages.hpp:37</span></span></label></li>
+<li data-id="bug-results"><label class="item"><input type="checkbox" class="tick"><span class="t">Unchecked results: <code>SDL_Init</code>, <code>SDL_Vulkan_CreateSurface</code>, <code>vmaCreateAllocator</code>, every vk-bootstrap <code>.value()</code>, <code>vkCreateDescriptorPool</code>, <code>createPipeline</code> and the shader loads; <code>VK_CHECK</code> aborts on positive codes such as <code>VK_TIMEOUT</code> and <code>VK_SUBOPTIMAL_KHR</code>.<span class="loc">phVkEngine.hpp:902, :938-994, :1212-1217, :1361-1432 · phVkDescriptors.hpp:287 · phVkTypes.hpp:44-53</span></span></label></li>
+<li data-id="bug-misc"><label class="item"><input type="checkbox" class="tick"><span class="t">Small ones: <code>phVkTexture</code> constructor declares locals that shadow the members (no effect); <code>phVkScene&lt;T&gt;()</code> / <code>phVkMesh&lt;T&gt;(...)</code> constructor spellings are ill-formed in C++20 (MSVC accepts, GCC rejects); <code>render_semaphore</code> is per frame slot rather than per swapchain image (newer validation layers flag it); <code>frame_number</code> is a signed <code>int</code>; <code>mesh_pbr.frag</code> no longer compiles (<code>allTextures</code> commented out, unused); root CMake calls <code>find_package</code> before <code>project()</code> and lists sources on an INTERFACE target (needs 3.19, declares 3.8).<span class="loc">phVkMaterial.hpp:72-80 · phVkScene.hpp:38-43 · phVkEngine.hpp:54, :680, :701 · CMakeLists.txt:10-12</span></span></label></li>
+<li data-id="bug-arraylist"><label class="item"><input type="checkbox" class="tick"><span class="t">In <code>libraries</code>, not acid-vulkan: <code>ArrayList::remove</code> computes <code>count − 1</code> without checking for an empty list, so removing from an empty list underflows and destroys <code>data[index]</code>.<span class="loc">array_list.hpp:558-575</span></span></label></li>
+</ul>
+
+<div class="status" id="status">ticks: loading</div>
+</main>
+<script>window.__ticks = {};</script>
+<script>
+(function () {
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('input.tick'));
+  var statusEl = document.getElementById('status');
+  var state = {};
+  var LS_KEY = 'acid-vulkan-roadmap-ticks';
+  function idOf(box) { return box.closest('li').getAttribute('data-id'); }
+  function apply() {
+    boxes.forEach(function (b) { var on = !!state[idOf(b)]; b.checked = on; b.closest('li').classList.toggle('done', on); });
+    document.querySelectorAll('ul.list li').forEach(function (li) {
+      var sub = li.querySelector(':scope > ul.list'); var pc = li.querySelector(':scope > label .pc');
+      if (!sub) { if (pc) pc.remove(); return; }
+      var kids = sub.querySelectorAll(':scope > li'); var done = 0; kids.forEach(function (k) { if (k.classList.contains('done')) done++; });
+      if (!pc) { pc = document.createElement('span'); pc.className = 'pc'; li.querySelector(':scope > label .t').appendChild(pc); }
+      pc.textContent = done + '/' + kids.length;
+    });
+    document.querySelectorAll('h2[data-group]').forEach(function (h) {
+      var list = h.nextElementSibling; while (list && list.tagName !== 'UL') list = list.nextElementSibling;
+      if (!list) return; var kids = list.querySelectorAll(':scope > li'); var done = 0;
+      kids.forEach(function (k) { if (k.classList.contains('done')) done++; });
+      h.querySelector('.count').textContent = done + '/' + kids.length;
+    });
+  }
+  function setStatus(s) { statusEl.textContent = 'ticks: ' + s; }
+  // Static copy: ticks baked in at sync time (window.__ticks), then this browser's own ticks on top
+  if (window.__ticks) state = JSON.parse(JSON.stringify(window.__ticks));
+  try { var ls = localStorage.getItem(LS_KEY); if (ls) state = JSON.parse(ls) || state; } catch (e) {}
+  apply();
+  var save = function () { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {} setStatus('saved in this browser only'); };
+  var readOnly = false;
+  boxes.forEach(function (b) {
+    b.addEventListener('change', function () {
+      if (readOnly) { apply(); return; }
+      state[idOf(b)] = b.checked; if (!b.checked) delete state[idOf(b)];
+      apply(); save();
+    });
+  });
+  if (!window.claude || !window.claude.use) { setStatus('saved in this browser only'); return; }
+  Promise.all([claude.use('db'), claude.use('user')]).then(function (r) {
+    var db = r[0], user = r[1];
+    if (!db) { setStatus('saved in this browser only'); return; }
+    var ref = db.doc('roadmap/state'); var pending = null, writing = null;
+    function flush() {
+      if (writing || !pending) return; var body = pending; pending = null;
+      writing = ref.set(body).then(function () { writing = null; setStatus('saved for everyone'); flush(); },
+        function (e) { writing = null; if (e && e.code === 'invalid_argument') { readOnly = true; setStatus('read only for you'); } else setStatus('could not save (' + (e && e.code) + ')'); });
+    }
+    save = function () {
+      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
+      pending = { ticks: JSON.parse(JSON.stringify(state)) }; clearTimeout(save.t); save.t = setTimeout(flush, 400);
+    };
+    if (user && typeof user.can === 'function') { Promise.resolve(user.can('data.write')).then(function (ok) { if (ok === false) { readOnly = true; setStatus('read only for you'); } }); }
+    ref.onSnapshot(function (snap) {
+      if (snap.metadata && snap.metadata.hasPendingWrites) return;
+      var d = snap.exists ? snap.data() : null; state = (d && d.ticks) ? JSON.parse(JSON.stringify(d.ticks)) : {};
+      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
+      apply(); if (!readOnly) setStatus('saved for everyone');
+    }, function (e) { setStatus('shared store unavailable (' + (e && e.code) + '), this browser only'); });
+  });
+})();
+</script>
