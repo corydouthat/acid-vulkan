@@ -81,6 +81,24 @@ public:
 };
 
 
+// NODE PROPERTY
+// One glTF "extras" entry from a node (Blender object custom properties)
+// Note: plain data with fixed-size strings so it relocates safely in an ArrayList
+template <typename T = float>
+struct phVkNodeProp
+{
+	enum Type : unsigned char { PROP_NUMBER, PROP_BOOL, PROP_STRING, PROP_ARRAY };
+
+	char key[32];			// Property name as written in Blender
+	Type type;
+	double number;			// PROP_NUMBER (int / uint64 / float / double all land here)
+	bool flag;				// PROP_BOOL
+	char text[64];			// PROP_STRING
+	double values[16];		// PROP_ARRAY - numeric arrays up to 16 (vectors, quaternions, 4x4 matrices)
+	unsigned char count;	// PROP_ARRAY length
+};
+
+
 // MODEL
 template <typename T = float>
 struct phVkModel
@@ -89,6 +107,9 @@ struct phVkModel
 	std::string file_path;	// Original file path
 
 	ArrayList<unsigned int> mesh_indices; // Mesh indices (can have multiple meshes per model)
+
+	ArrayList<phVkNodeProp<T>> props;	// Custom properties from the file (see phVkNodeProp)
+	int parent = -1;					// Model index of the nearest ancestor node that is also a model (-1 = none)
 
     bool scale_valid = false;
 	Mat4<T> scale;              // Scale matrix
@@ -106,6 +127,16 @@ struct phVkModel
     void setTransformCallback(std::function<Mat4<T>(unsigned int)>, unsigned int index);
 
     Mat4<T> getTransform();
+
+    // Custom property lookup (type must match or the default is returned)
+    int findProp(const char* key)const;
+    double getPropNumber(const char* key, double default_value)const;
+    bool getPropBool(const char* key, bool default_value)const;
+    const char* getPropString(const char* key, const char* default_value)const;
+    // Arrays: length must match or the default is returned (quat is w, x, y, z; mat4 is column-major)
+    Vec3<T> getPropVec3(const char* key, Vec3<T> default_value)const;
+    Quat<T> getPropQuat(const char* key, Quat<T> default_value)const;
+    Mat4<T> getPropMat4(const char* key, Mat4<T> default_value)const;
 };
 
 
@@ -366,4 +397,95 @@ Mat4<T> phVkModel<T>::getTransform()
             return temp;
         }
     }
+}
+
+
+// Find a custom property by key
+// Return: index into props, or -1 if not present
+template <typename T>
+int phVkModel<T>::findProp(const char* key)const
+{
+    for (unsigned int i = 0; i < props.getCount(); i++)
+    {
+        if (strcmp(props[i].key, key) == 0)
+            return (int)i;
+    }
+
+    return -1;
+}
+
+
+template <typename T>
+double phVkModel<T>::getPropNumber(const char* key, double default_value)const
+{
+    int i = findProp(key);
+
+    if (i < 0 || props[i].type != phVkNodeProp<T>::PROP_NUMBER)
+        return default_value;
+
+    return props[i].number;
+}
+
+
+template <typename T>
+bool phVkModel<T>::getPropBool(const char* key, bool default_value)const
+{
+    int i = findProp(key);
+
+    if (i < 0 || props[i].type != phVkNodeProp<T>::PROP_BOOL)
+        return default_value;
+
+    return props[i].flag;
+}
+
+
+template <typename T>
+const char* phVkModel<T>::getPropString(const char* key, const char* default_value)const
+{
+    int i = findProp(key);
+
+    if (i < 0 || props[i].type != phVkNodeProp<T>::PROP_STRING)
+        return default_value;
+
+    return props[i].text;
+}
+
+
+template <typename T>
+Vec3<T> phVkModel<T>::getPropVec3(const char* key, Vec3<T> default_value)const
+{
+    int i = findProp(key);
+
+    if (i < 0 || props[i].type != phVkNodeProp<T>::PROP_ARRAY || props[i].count != 3)
+        return default_value;
+
+    return Vec3<T>((T)props[i].values[0], (T)props[i].values[1], (T)props[i].values[2]);
+}
+
+
+template <typename T>
+Quat<T> phVkModel<T>::getPropQuat(const char* key, Quat<T> default_value)const
+{
+    int i = findProp(key);
+
+    if (i < 0 || props[i].type != phVkNodeProp<T>::PROP_ARRAY || props[i].count != 4)
+        return default_value;
+
+    return Quat<T>((T)props[i].values[0], (T)props[i].values[1], (T)props[i].values[2], (T)props[i].values[3]);
+}
+
+
+template <typename T>
+Mat4<T> phVkModel<T>::getPropMat4(const char* key, Mat4<T> default_value)const
+{
+    int i = findProp(key);
+
+    if (i < 0 || props[i].type != phVkNodeProp<T>::PROP_ARRAY || props[i].count != 16)
+        return default_value;
+
+    Mat4<T> m;
+    for (unsigned int k = 0; k < 16; k++)
+        m.set(k / 4, k % 4, (T)props[i].values[k]);	// Column-major
+
+    return m;
 }

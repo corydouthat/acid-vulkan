@@ -44,8 +44,8 @@ public:
 
     // -- Functions --
     void load(std::string path);
-    void processNode(aiNode* node, const aiScene* scene, Mat4<T> global_transform = Mat4<T>(), 
-        unsigned int meshes_offset = 0, unsigned int materials_offset = 0);
+    void processNode(aiNode* node, const aiScene* scene, Mat4<T> global_transform = Mat4<T>(),
+        unsigned int meshes_offset = 0, unsigned int materials_offset = 0, int parent_model = -1);
     //void processMesh(const aiMesh* mesh, const aiScene* scene, phVkMesh<T>* new_mesh, 
     //    unsigned int materials_offset = 0);
     void initVulkan(phVkEngine<T>* engine);
@@ -112,8 +112,8 @@ void phVkScene<T>::load(std::string path)
 // Keeps track of transformation as the node tree is traversed
 // Used to expand relative transformations all into global coordinates
 template <typename T>
-void phVkScene<T>::processNode(aiNode* node, const aiScene* scene, Mat4<T> global_transform, 
-    unsigned int meshes_offset, unsigned int materials_offset)
+void phVkScene<T>::processNode(aiNode* node, const aiScene* scene, Mat4<T> global_transform,
+    unsigned int meshes_offset, unsigned int materials_offset, int parent_model)
 {
     if (!node || !scene)
         return;
@@ -134,13 +134,105 @@ void phVkScene<T>::processNode(aiNode* node, const aiScene* scene, Mat4<T> globa
     ai_transform = global_transform * ai_transform;
     global_transform = global_transform * model_transform;
 
+    // Nodes with meshes become models, and so do empties that carry custom properties
+    // (spawn points, pivots, etc.) - a model with no meshes just doesn't draw
+    // Note: Blender only writes extras with "Custom Properties" checked on export,
+    //       and only object properties end up on the node
+    bool has_props = node->mMetaData && node->mMetaData->mNumProperties > 0;
+
     int model = -1;
-    if (node->mNumMeshes > 0)   // Check valid node / meshes
+    if (node->mNumMeshes > 0 || has_props)
     {
         model = models.push(phVkModel<T>{});
 
         // Get node name
         models[model].name = node->mName.C_Str();
+        models[model].parent = parent_model;
+
+        // Copy custom properties (see phVkNodeProp)
+        for (unsigned int i = 0; has_props && i < node->mMetaData->mNumProperties; i++)
+        {
+            const char* key = node->mMetaData->mKeys[i].C_Str();
+            const aiMetadataEntry& value = node->mMetaData->mValues[i];
+
+            phVkNodeProp<T> prop = {};
+
+            switch (value.mType)
+            {
+            case AI_BOOL:
+                prop.type = phVkNodeProp<T>::PROP_BOOL;
+                prop.flag = *static_cast<const bool*>(value.mData);
+                break;
+            case AI_INT32:
+                prop.type = phVkNodeProp<T>::PROP_NUMBER;
+                prop.number = *static_cast<const int32_t*>(value.mData);
+                break;
+            case AI_UINT64:
+                prop.type = phVkNodeProp<T>::PROP_NUMBER;
+                prop.number = (double)*static_cast<const uint64_t*>(value.mData);
+                break;
+            case AI_FLOAT:
+                prop.type = phVkNodeProp<T>::PROP_NUMBER;
+                prop.number = *static_cast<const float*>(value.mData);
+                break;
+            case AI_DOUBLE:
+                prop.type = phVkNodeProp<T>::PROP_NUMBER;
+                prop.number = *static_cast<const double*>(value.mData);
+                break;
+            case AI_AISTRING:
+                prop.type = phVkNodeProp<T>::PROP_STRING;
+                strncpy(prop.text, static_cast<const aiString*>(value.mData)->C_Str(), sizeof(prop.text) - 1);
+                if (strlen(static_cast<const aiString*>(value.mData)->C_Str()) >= sizeof(prop.text))
+                    printf("phVkScene: property '%s' on '%s' truncated to %zu chars\n", key, node->mName.C_Str(), sizeof(prop.text) - 1);
+                break;
+            case AI_AIMETADATA:
+            {
+                // Arrays come through as nested metadata with one numeric child per element
+                // (nested objects also land here - skipped below if anything isn't a number)
+                const aiMetadata* sub = static_cast<const aiMetadata*>(value.mData);
+                bool numeric = sub && sub->mNumProperties > 0 && sub->mNumProperties <= 16;
+
+                for (unsigned int k = 0; numeric && k < sub->mNumProperties; k++)
+                {
+                    // Array elements all carry the array's own name - anything else is a nested object
+                    if (strcmp(sub->mKeys[k].C_Str(), key) != 0)
+                    {
+                        numeric = false;
+                        break;
+                    }
+
+                    const aiMetadataEntry& e = sub->mValues[k];
+                    switch (e.mType)
+                    {
+                    case AI_INT32:  prop.values[k] = *static_cast<const int32_t*>(e.mData); break;
+                    case AI_UINT64: prop.values[k] = (double)*static_cast<const uint64_t*>(e.mData); break;
+                    case AI_FLOAT:  prop.values[k] = *static_cast<const float*>(e.mData); break;
+                    case AI_DOUBLE: prop.values[k] = *static_cast<const double*>(e.mData); break;
+                    default:        numeric = false; break;
+                    }
+                }
+
+                if (!numeric)
+                {
+                    printf("phVkScene: property '%s' on '%s' skipped (only numeric arrays up to 16 are supported)\n", key, node->mName.C_Str());
+                    continue;
+                }
+
+                prop.type = phVkNodeProp<T>::PROP_ARRAY;
+                prop.count = (unsigned char)sub->mNumProperties;
+                break;
+            }
+            default:    // AI_AIVECTOR3D and anything newer
+                printf("phVkScene: property '%s' on '%s' skipped (unsupported type %d)\n", key, node->mName.C_Str(), (int)value.mType);
+                continue;
+            }
+
+            strncpy(prop.key, key, sizeof(prop.key) - 1);
+            if (strlen(key) >= sizeof(prop.key))
+                printf("phVkScene: property key '%s' on '%s' truncated to %zu chars\n", key, node->mName.C_Str(), sizeof(prop.key) - 1);
+
+            models[model].props.push(prop);
+        }
 
         // Set node scale matrix
         models[model].scale = model_scale;
@@ -162,15 +254,12 @@ void phVkScene<T>::processNode(aiNode* node, const aiScene* scene, Mat4<T> globa
             int mesh_instance = models[model].mesh_indices.push(meshes_offset + node->mMeshes[i]);
         }
     }
-    //else
-    //{
-    //    // TODO: define empty node if relevant?
-    //}
-
     // Process all child nodes recursively
     for (unsigned int i = 0; i < node->mNumChildren; i++)
     {
-        processNode(node->mChildren[i], scene, global_transform, meshes_offset, materials_offset);
+        // Children of a skipped node inherit this node's parent
+        processNode(node->mChildren[i], scene, global_transform, meshes_offset, materials_offset,
+            model >= 0 ? model : parent_model);
     }
 }
 
