@@ -1,6 +1,4 @@
-﻿# CMakeList.txt : CMake project for acid-vulkan, include source and define
-# project specific logic here.
-#
+﻿
 cmake_minimum_required (VERSION 3.8)
 
 # Enable Hot Reload for MSVC compilers if supported.
@@ -13,23 +11,31 @@ find_package(Vulkan REQUIRED)
 
 project (acid-vulkan)
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-# Add source to this project's executable.
-add_executable(acid-vulkan 
-	main.cpp
-	src/phvk_camera.cpp
-	src/phvk_descriptors.cpp
-	src/phvk_engine.cpp
-	src/phvk_images.cpp
-	src/phvk_initializers.cpp
-	src/phvk_loader.cpp
-	src/phvk_pipelines.cpp
-)
+if (NOT TARGET acid-vulkan)
+	add_library(acid-vulkan INTERFACE
+		# including files here will force Visual Studio to show library
+		"src/phVkTypes.hpp"			# Order is important - used in many places
+		"src/phVkConfig.hpp"		# Order is important
+		"src/phVkInitDefaults.hpp"	# Order is important?
+		"src/phVkEngine.hpp"		# Includes VMA_IMPLEMENTATIION
+		"src/phVkImages.hpp"		# Includes STB_IMAGE_IMPLEMENTATION
+		"src/phVkCamera.hpp"
+		"src/phVkDescriptors.hpp"
+		"src/phVkMaterial.hpp"
+		"src/phVkModel.hpp"
+		"src/phVkPipelines.hpp"
+		"src/phVkScene.hpp"
+	)
+endif()
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # Set target include directories
-target_include_directories(acid-vulkan PRIVATE
+target_include_directories(acid-vulkan INTERFACE
 	src
 )
 
@@ -38,10 +44,11 @@ add_subdirectory(dependencies dependencies)
 
 # Target link libraries
 target_link_libraries(acid-vulkan 
-	PUBLIC Vulkan::Vulkan
-	PRIVATE dependencies
+	INTERFACE Vulkan::Vulkan	# TODO: optional?
+	INTERFACE SDL3::SDL3		# TODO: optional?
+	INTERFACE dependencies
 )
 
-if (CMAKE_VERSION VERSION_GREATER 3.12)
-  set_property(TARGET acid-vulkan PROPERTY CXX_STANDARD 20)
-endif()
+# Example to include a local main function / testbench
+#add_executable(acid-vulkan-testbench "testbench/main.cpp")
+#target_link_libraries(acid-vulkan-testbench PRIVATE acid-vulkan)

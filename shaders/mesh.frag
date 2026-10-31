@@ -53,8 +53,8 @@ void main()
 	vec3 irradiance = calcIrradiance(inNormal); 
 
 
-	vec3 color = inColor * texture(colorTex,inUV).xyz;
+	vec3 color = /*inColor * */ texture(colorTex,inUV).xyz;
 
-	outFragColor = vec4(color * lightValue + color * irradiance.x * vec3(0.2f) ,1.0f);
+    outFragColor = vec4(color * lightValue + color * irradiance.x * vec3(0.2f), 1.0f);
 }
 
