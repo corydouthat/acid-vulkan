@@ -69,9 +69,9 @@ public:
 
 	// Disable copy and assign to protect Vulkan resources
     phVkMesh<T>(const phVkMesh<T>& copy) = delete;
-    phVkMesh<T>(phVkMesh<T>&& move) noexcept = default;
+    phVkMesh<T>(phVkMesh<T>&& move) noexcept : phVkMesh() { *this = std::move(move); }
     const phVkMesh<T>& operator =(const phVkMesh<T>& copy) = delete;
-    phVkMesh<T>& operator =(phVkMesh<T>&& move) noexcept = default;
+    phVkMesh<T>& operator =(phVkMesh<T>&& move) noexcept;
 
     // Functions
     void processMesh(const aiMesh* mesh, const aiScene* scene, unsigned int materials_offset = 0);
@@ -136,6 +136,7 @@ struct phVkModel
     // Arrays: length must match or the default is returned (quat is w, x, y, z; mat4 is column-major)
     Vec3<T> getPropVec3(const char* key, Vec3<T> default_value)const;
     Quat<T> getPropQuat(const char* key, Quat<T> default_value)const;
+	Mat3<T> getPropMat3(const char* key, Mat3<T> default_value)const;
     Mat4<T> getPropMat4(const char* key, Mat4<T> default_value)const;
 };
 
@@ -149,6 +150,35 @@ phVkMesh<T>::phVkMesh()
     index_buffer = {};
     vertex_buffer = {};
     vertex_buffer_address = 0;
+}
+
+
+// Move: take ownership of the Vulkan buffers, leave the source empty
+template <typename T>
+phVkMesh<T>& phVkMesh<T>::operator =(phVkMesh<T>&& other) noexcept
+{
+    if (this == &other)
+        return *this;
+
+    vulkanCleanup();
+
+    name = std::move(other.name);
+    ccw = other.ccw;
+    vertices = std::move(other.vertices);
+    indices = std::move(other.indices);
+    mat_i = other.mat_i;
+
+    engine = other.engine;
+    index_buffer = other.index_buffer;
+    vertex_buffer = other.vertex_buffer;
+    vertex_buffer_address = other.vertex_buffer_address;
+
+    other.engine = nullptr;
+    other.index_buffer = {};
+    other.vertex_buffer = {};
+    other.vertex_buffer_address = 0;
+
+    return *this;
 }
 
 
@@ -472,6 +502,22 @@ Quat<T> phVkModel<T>::getPropQuat(const char* key, Quat<T> default_value)const
         return default_value;
 
     return Quat<T>((T)props[i].values[0], (T)props[i].values[1], (T)props[i].values[2], (T)props[i].values[3]);
+}
+
+
+template <typename T>
+Mat3<T> phVkModel<T>::getPropMat3(const char* key, Mat3<T> default_value)const
+{
+    int i = findProp(key);
+
+    if (i < 0 || props[i].type != phVkNodeProp<T>::PROP_ARRAY || props[i].count != 9)
+        return default_value;
+
+    Mat3<T> m;
+    for (unsigned int k = 0; k < 9; k++)
+        m.set(k / 3, k % 3, (T)props[i].values[k]);	// Column-major
+
+    return m;
 }
 
 

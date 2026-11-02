@@ -137,7 +137,7 @@ public:
     VkRect2D getScissor();
 
     // -- Run Functions --
-    void run();
+    void run(double dt);
 
     // -- Helper Functions --
     AllocatedBuffer createBuffer(size_t alloc_size,
@@ -151,6 +151,7 @@ public:
     void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
 
     // -- Cleanup --
+    void clear();
     void cleanup();
 
 private:
@@ -238,7 +239,7 @@ VkExtent2D phVkEngine<T>::getWindowExtent()
 
 
 template <typename T>
-void phVkEngine<T>::run()
+void phVkEngine<T>::run(double dt)
 {
     SDL_Event sdl_event;
     ArrayList<SDL_Event> sdl_events;
@@ -284,7 +285,7 @@ void phVkEngine<T>::run()
 
     // -- Update Cameras --
 	for (unsigned int i = 0; i < cameras.getCount(); i++)
-		cameras[i].update(1.0f / 60.f);  // TODO: add real time
+		cameras[i].update(dt);
 
 
     // -- Draw --
@@ -469,74 +470,94 @@ void phVkEngine<T>::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& f
 
 
 template <typename T>
+void phVkEngine<T>::clear()
+{
+    if (!is_initialized)
+        return;
+
+    // Wait: frames in flight still reference the mesh buffers
+    vkDeviceWaitIdle(device);
+    
+    // Note: destructors free mesh buffers, material buffers, textures, samplers
+    scenes.clear();				
+    cameras.clear();
+
+    // Note: material descriptor sets come from global_descriptor_allocator and are 
+    // never returned, so each scene load leaks a handful of sets.
+    
+    active_camera = 0;
+}
+
+
+template <typename T>
 void phVkEngine<T>::cleanup()
 {
-    if (is_initialized)
+    if (!is_initialized)
+        return;
+    
+    // Wait for GPU to finish
+    vkDeviceWaitIdle(device);
+
+    // -- Destroy resources in reverse order of creation --
+
+    // Scene
+    scenes.free(); // Rely on destructors to detroy buffers
+
+    // Scene data buffer
+    destroyBuffer(scene_data_buffer);
+
+    // Pipelines
+    mesh_pipeline.reset();
+    background_pipeline.reset();
+    // TODO: material pipelines
+
+    // Destroy descriptor set objects
+    for (int i = 0; i < FRAME_BUFFER_COUNT; i++)
     {
-        // Wait for GPU to finish
-        vkDeviceWaitIdle(device);
-
-        // -- Destroy resources in reverse order of creation --
-
-        // Scene
-        scenes.free(); // Rely on destructors to detroy buffers
-
-        // Scene data buffer
-        destroyBuffer(scene_data_buffer);
-
-        // Pipelines
-        mesh_pipeline.reset();
-        background_pipeline.reset();
-        // TODO: material pipelines
-
-        // Destroy descriptor set objects
-        for (int i = 0; i < FRAME_BUFFER_COUNT; i++)
-        {
-            frames[i].frame_descriptors.destroyPools(device);
-        }
-        global_descriptor_allocator.destroyPools(device);
-        vkDestroyDescriptorSetLayout(device, draw_image_descriptor_layout, nullptr);
-        //vkDestroyDescriptorSetLayout(device, single_image_descriptor_layout, nullptr);
-        vkDestroyDescriptorSetLayout(device, material_data_descriptor_layout, nullptr);
-        vkDestroyDescriptorSetLayout(device, gpu_scene_data_descriptor_layout, nullptr);
-
-        // Destroy sync objects
-        vkDestroyFence(device, imm_fence, nullptr);
-        for (int i = 0; i < FRAME_BUFFER_COUNT; i++)
-        {
-            vkDestroyFence(device, frames[i].render_fence, nullptr);
-            vkDestroySemaphore(device, frames[i].render_semaphore, nullptr);
-            vkDestroySemaphore(device, frames[i].swapchain_semaphore, nullptr);
-        }
-
-        // Destroy command pools
-        vkDestroyCommandPool(device, imm_command_pool, nullptr);
-        for (int i = 0; i < FRAME_BUFFER_COUNT; i++)
-        {
-            // Note: destroying the command pool also destroys buffers allocated from it
-            vkDestroyCommandPool(device, frames[i].command_pool, nullptr);
-        }
-
-        // Destroy swapchain images
-        destroyImage(depth_image);
-        destroyImage(draw_image);
-
-        // Destroy Vulkan configs (de-init Vulkan)
-        vmaDestroyAllocator(allocator);
-        destroySwapchain();
-        vkDestroySurfaceKHR(instance, surface, nullptr);    // TODO - out of order?
-        vkDestroyDevice(device, nullptr);
-        vkb::destroy_debug_utils_messenger(instance, debug_messenger);
-        vkDestroyInstance(instance, nullptr);
-
-        // Destroy the window
-        SDL_DestroyWindow(window);
-
-        // Quit SDL
-        SDL_Quit();
-
-        is_initialized = false;
+        frames[i].frame_descriptors.destroyPools(device);
     }
+    global_descriptor_allocator.destroyPools(device);
+    vkDestroyDescriptorSetLayout(device, draw_image_descriptor_layout, nullptr);
+    //vkDestroyDescriptorSetLayout(device, single_image_descriptor_layout, nullptr);
+    vkDestroyDescriptorSetLayout(device, material_data_descriptor_layout, nullptr);
+    vkDestroyDescriptorSetLayout(device, gpu_scene_data_descriptor_layout, nullptr);
+
+    // Destroy sync objects
+    vkDestroyFence(device, imm_fence, nullptr);
+    for (int i = 0; i < FRAME_BUFFER_COUNT; i++)
+    {
+        vkDestroyFence(device, frames[i].render_fence, nullptr);
+        vkDestroySemaphore(device, frames[i].render_semaphore, nullptr);
+        vkDestroySemaphore(device, frames[i].swapchain_semaphore, nullptr);
+    }
+
+    // Destroy command pools
+    vkDestroyCommandPool(device, imm_command_pool, nullptr);
+    for (int i = 0; i < FRAME_BUFFER_COUNT; i++)
+    {
+        // Note: destroying the command pool also destroys buffers allocated from it
+        vkDestroyCommandPool(device, frames[i].command_pool, nullptr);
+    }
+
+    // Destroy swapchain images
+    destroyImage(depth_image);
+    destroyImage(draw_image);
+
+    // Destroy Vulkan configs (de-init Vulkan)
+    vmaDestroyAllocator(allocator);
+    destroySwapchain();
+    vkDestroySurfaceKHR(instance, surface, nullptr);    // TODO - out of order?
+    vkDestroyDevice(device, nullptr);
+    vkb::destroy_debug_utils_messenger(instance, debug_messenger);
+    vkDestroyInstance(instance, nullptr);
+
+    // Destroy the window
+    SDL_DestroyWindow(window);
+
+    // Quit SDL
+    SDL_Quit();
+
+    is_initialized = false;
 }
 
 
@@ -552,9 +573,9 @@ void phVkEngine<T>::updateScene()
 
     // Camera projection
     scene_data.proj = Mat4<T>::projPerspective(
-		1.22173f,           // 70 degrees FOV in radians
+		cameras[active_camera].fov_y,
         (T)getRenderArea().extent.width / (T)getRenderArea().extent.height,
-        10000.f, 0.1f);     // Reverse depth help with precision issues
+        cameras[active_camera].clip_far, cameras[active_camera].clip_near);  // Swapped - reverse depth helps with precision issues
 
     // invert the Y direction on projection matrix so that we are more similar
     // to opengl and gltf axis

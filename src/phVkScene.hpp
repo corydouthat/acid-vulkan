@@ -6,6 +6,8 @@
 #include <iostream>
 #include <cstdio>
 #include <cstring>
+#include <cmath>
+#include <algorithm>
 
 #include <vulkan/vulkan.h>
 
@@ -22,6 +24,24 @@
 #include "phVkMaterial.hpp"
 
 
+// SCENE CAMERA
+// One camera from the file - only stored here, the engine decides which (if any) becomes a phVkCamera
+// Note: assimp names the camera after its node, so this is also the model name
+template <typename T = float>
+struct phVkSceneCamera
+{
+	std::string name;
+	int model = -1;			// Model index of the camera node (parent and custom properties live there)
+	Vec3<T> pos;			// World space
+	Vec3<T> forward;		// World space, normalized
+	Vec3<T> up;				// World space, normalized
+	T fov_y = 0;			// Vertical field of view (radians) - 0 for orthographic
+	T aspect = 0;			// Aspect ratio from the file (0 if not given)
+	T clip_near = 0;
+	T clip_far = 0;
+};
+
+
 template <typename T>
 class phVkScene
 {
@@ -32,6 +52,8 @@ public:
 	ArrayList<phVkMaterial<T>> materials;
 
 	ArrayList<phVkModel<T>> models;
+
+	ArrayList<phVkSceneCamera<T>> cameras;	// Cameras from the file (see phVkSceneCamera)
 
     
     // -- Constructors and Operators --
@@ -49,6 +71,8 @@ public:
     //void processMesh(const aiMesh* mesh, const aiScene* scene, phVkMesh<T>* new_mesh, 
     //    unsigned int materials_offset = 0);
     void initVulkan(phVkEngine<T>* engine);
+    int findModel(const char* name);
+    bool calcFitBox(unsigned int model, Vec3<T>* half_size, Mat4<T>* transf);
 
     // No destructor - rely on other objects destructors
 };
@@ -140,8 +164,14 @@ void phVkScene<T>::processNode(aiNode* node, const aiScene* scene, Mat4<T> globa
     //       and only object properties end up on the node
     bool has_props = node->mMetaData && node->mMetaData->mNumProperties > 0;
 
+    // Cameras live in their own list on the scene, the node with the same name holds the placement
+    int camera = -1;
+    for (unsigned int i = 0; i < scene->mNumCameras; i++)
+        if (scene->mCameras[i]->mName == node->mName)
+            camera = (int)i;
+
     int model = -1;
-    if (node->mNumMeshes > 0 || has_props)
+    if (node->mNumMeshes > 0 || has_props || camera >= 0)
     {
         model = models.push(phVkModel<T>{});
 
@@ -247,6 +277,28 @@ void phVkScene<T>::processNode(aiNode* node, const aiScene* scene, Mat4<T> globa
 		models[model].scale_transform = ai_transform;
 		models[model].scale_transform_valid = true;
 
+        // Camera - assimp gives position / look / up relative to the node, move them to world space
+        // Note: assimp converts glTF's vertical fov to horizontal with the file's aspect, so undo that here
+        if (camera >= 0)
+        {
+            const aiCamera* ai_cam = scene->mCameras[camera];
+            Vec3<T> local_pos(ai_cam->mPosition.x, ai_cam->mPosition.y, ai_cam->mPosition.z);
+            Vec3<T> local_look(ai_cam->mLookAt.x, ai_cam->mLookAt.y, ai_cam->mLookAt.z);
+            Vec3<T> local_up(ai_cam->mUp.x, ai_cam->mUp.y, ai_cam->mUp.z);
+
+            int cam = cameras.push(phVkSceneCamera<T>{});
+            cameras[cam].name = node->mName.C_Str();
+            cameras[cam].model = model;
+            cameras[cam].pos = global_transform * local_pos;
+            cameras[cam].forward = (global_transform * (local_pos + local_look) - cameras[cam].pos).norm();
+            cameras[cam].up = (global_transform * (local_pos + local_up) - cameras[cam].pos).norm();
+            cameras[cam].aspect = (T)ai_cam->mAspect;
+            cameras[cam].clip_near = (T)ai_cam->mClipPlaneNear;
+            cameras[cam].clip_far = (T)ai_cam->mClipPlaneFar;
+            if (ai_cam->mHorizontalFOV > 0)
+                cameras[cam].fov_y = (T)(2.0 * atan(tan(ai_cam->mHorizontalFOV * 0.5) / (ai_cam->mAspect > 0 ? ai_cam->mAspect : 1.0)));
+        }
+
         // Process all meshes in the current node
         for (unsigned int i = 0; i < node->mNumMeshes; i++)
         {
@@ -276,4 +328,66 @@ void phVkScene<T>::initVulkan(phVkEngine<T>* engine)
     {
         materials[i].initVulkan(engine);
     }
+}
+
+
+// Find a scene model by its node name
+// Returns -1 if missing
+// TODO: add partial string match option?
+template <typename T>
+int phVkScene<T>::findModel(const char* name)
+{
+    for (unsigned int i = 0; i < models.getCount(); i++)
+    {
+        if (_stricmp(models[i].name.c_str(), name) == 0)
+            return (int)i;
+    }
+
+    //printf("model '%s' not found in scene\n", name);
+    return -1;
+}
+
+
+// Axis-aligned box fit around all of a model's mesh vertices (model space, scale applied)
+// Outputs half size and an offset transform to the box center
+// Returns false if the model has no vertices (outputs untouched)
+template <typename T>
+bool phVkScene<T>::calcFitBox(unsigned int model, Vec3<T>* half_size, Mat4<T>* transf)
+{
+    if (model >= models.getCount() || !half_size || !transf)
+        return false;
+
+    const phVkModel<T>& m = models[model];
+    Vec3<T> min, max;
+    bool first = true;
+
+    for (unsigned int i = 0; i < m.mesh_indices.getCount(); i++)
+    {
+        const ArrayList<phVkVertex<T>>& verts = meshes[m.mesh_indices[i]].vertices;
+
+        for (unsigned int v = 0; v < verts.getCount(); v++)
+        {
+            Vec3<T> p = m.scale_valid ? m.scale * verts[v].p : verts[v].p;
+
+            if (first)
+            {
+                min = max = p;
+                first = false;
+            }
+            else
+            {
+                min.x = std::min(min.x, p.x); max.x = std::max(max.x, p.x);
+                min.y = std::min(min.y, p.y); max.y = std::max(max.y, p.y);
+                min.z = std::min(min.z, p.z); max.z = std::max(max.z, p.z);
+            }
+        }
+    }
+
+    if (first)
+        return false;
+
+    *half_size = (max - min) * (T)0.5;
+    *transf = Mat4<T>::transl((max + min) * (T)0.5);
+
+    return true;
 }

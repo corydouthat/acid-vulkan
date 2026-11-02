@@ -55,8 +55,8 @@ public:
     ~phVkTexture();
     phVkTexture(const phVkTexture&) = delete;               // Disable copy
     phVkTexture& operator=(const phVkTexture&) = delete;    // Disable copy
-    phVkTexture(phVkTexture&& other) noexcept = default;    // Allow move
-    phVkTexture& operator=(phVkTexture&& other) noexcept = default; // Allow move
+    phVkTexture(phVkTexture&& other) noexcept : phVkTexture() { *this = std::move(other); }    // Allow move
+    phVkTexture& operator=(phVkTexture&& other) noexcept;
     //const phVkTexture& operator=(const phVkTexture& other);
 
     // Functions
@@ -91,6 +91,38 @@ phVkTexture<T>::~phVkTexture()
         stbi_image_free(data);
         data = nullptr;
     }
+}
+
+
+// Move: take ownership of the pixel data and Vulkan objects, leave the source empty
+template <typename T>
+phVkTexture<T>& phVkTexture<T>::operator=(phVkTexture<T>&& other) noexcept
+{
+    if (this == &other)
+        return *this;
+
+    vulkanCleanup();
+    if (data)
+        stbi_image_free(data);
+
+    path = std::move(other.path);
+    is_loaded = other.is_loaded;
+    vulkan_initialized = other.vulkan_initialized;
+    width = other.width;
+    height = other.height;
+    channels = other.channels;
+    data = other.data;
+    engine = other.engine;
+    vulkan_image = other.vulkan_image;
+    vulkan_sampler = other.vulkan_sampler;
+
+    other.data = nullptr;
+    other.is_loaded = false;
+    other.vulkan_initialized = false;
+    other.vulkan_image = {};
+    other.vulkan_sampler = VK_NULL_HANDLE;
+
+    return *this;
 }
 
 //template <typename T>
@@ -364,8 +396,8 @@ public:
 
     phVkMaterial(const phVkMaterial&) = delete;               // Disable copy
     phVkMaterial& operator=(const phVkMaterial&) = delete;    // Disable copy
-    phVkMaterial(phVkMaterial&& other) noexcept = default;    // Allow move
-    phVkMaterial& operator=(phVkMaterial&& other) noexcept = default; // Allow move
+    phVkMaterial(phVkMaterial&& other) noexcept : phVkMaterial() { *this = std::move(other); }    // Allow move
+    phVkMaterial& operator=(phVkMaterial&& other) noexcept;
 
     ~phVkMaterial()
     {
@@ -380,6 +412,55 @@ public:
     void initVulkan(phVkEngine<T>* engine);
     void vulkanCleanup();
 };
+
+
+// Move: take ownership of the textures and Vulkan objects, leave the source empty
+template<typename T>
+phVkMaterial<T>& phVkMaterial<T>::operator=(phVkMaterial<T>&& other) noexcept
+{
+    if (this == &other)
+        return *this;
+
+    vulkanCleanup();
+
+    name = std::move(other.name);
+    file_path = std::move(other.file_path);
+    vulkan_initialized = other.vulkan_initialized;
+    engine = other.engine;
+
+    for (int i = 0; i < 4; i++)
+    {
+        diffuse_color[i] = other.diffuse_color[i];
+        specular_color[i] = other.specular_color[i];
+        ambient_color[i] = other.ambient_color[i];
+        emissive_color[i] = other.emissive_color[i];
+    }
+
+    shininess = other.shininess;
+    opacity = other.opacity;
+    reflectivity = other.reflectivity;
+    refractive_index = other.refractive_index;
+
+    has_diffuse_texture = other.has_diffuse_texture;
+    has_specular_texture = other.has_specular_texture;
+    has_normal_texture = other.has_normal_texture;
+    has_height_texture = other.has_height_texture;
+
+    diffuse_texture = std::move(other.diffuse_texture);
+    specular_texture = std::move(other.specular_texture);
+    normal_texture = std::move(other.normal_texture);
+    height_texture = std::move(other.height_texture);
+
+    material_buffer = other.material_buffer;
+    material_descriptor_set = other.material_descriptor_set;
+
+    other.vulkan_initialized = false;
+    other.engine = nullptr;
+    other.material_buffer = {};
+    other.material_descriptor_set = VK_NULL_HANDLE;
+
+    return *this;
+}
 
 
 // Main function to process material data from a loaded model

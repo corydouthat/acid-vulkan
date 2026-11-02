@@ -10,6 +10,7 @@
 // TODO: Add support for field of view and zoom
 // TODO: MAYBE add function to generate perspective projection matrix? / view + perspective? (already added perspective?)
 // TODO: Switch to Quaternions to avoid Gimbal Lock? (N/A?)
+// TODO: Defaults are set up for a follow camera at a particular scale and should likely be removed or re-worked
 
 template <typename T = float>
 struct phVkAutoCamConfig
@@ -20,22 +21,22 @@ struct phVkAutoCamConfig
 	unsigned int parent_index = 0;	// Index for external parent obj
 	Vec3<T> target_offset;		// Offset from external target position
 	Vec3<T> parent_offset;		// Offset from external parent position
-	Vec3<T> follow_vector;		// Vector from follow target to camera - if zero, follow is look only
-	Vec3<T> target_up;			// Netural up vector for target, to be transformed if roll_follow = true
-	bool follow = false;		// If true, camera will follow the target
-	bool look_follow = false;	// If true, camera will look at the target, even if follow = false
-	bool roll_follow = false;	// If true, camera will roll to match follow target's roll
+	Vec3<T> follow_vector = Vec3<T>(10, 5, 0);	// Vector from follow target to camera - if zero, follow is look only
+	Vec3<T> target_up = Vec3<T>(0, 1, 0);	// Netural up vector for target, to be transformed if roll_follow = true
+	bool follow = true;			// If true, camera will follow the target
+	bool look_follow = true;	// If true, camera will look at the target, even if follow = false
+	bool roll_follow = true;	// If true, camera will roll to match follow target's roll
 	bool parent_track = false;	// If true, camera position will track parent (overrides follow)
-	T target_range = 0;			// Slop range for target (+/- distance from target position)
-	T dolly_range = 0;			// Slop range for dolly (+/- distance along follow_vector)
-	T pan_range = 0;			// Slop range for pan (+/-radians, relative to up vector)
-	T tilt_range = 0;			// Slop range for tilt (+/-radians, relative to up vector)
-	T roll_range = 0;			// Slop range for roll (+/-radians, relative to up vector)
-	T target_speed = 0;			// Max target error correction speed (+/- units per second)
-	T dolly_speed = 0;			// Max dolly error correction speed (+/- units per second)
-	T pan_speed = 0;			// Max pan error correction speed (+/- radians per second)
-	T tilt_speed = 0;			// Max tilt error correction speed (+/- radians per second)
-	T roll_speed = 0;			// Max roll error correction speed (+/- radians per second)
+	T target_range = 5.0f;		// Slop range for target (+/- distance from target position)
+	T dolly_range = 5.0f;		// Slop range for dolly (+/- distance along follow_vector)
+	T pan_range = 2.0f;			// Slop range for pan (+/-radians, relative to up vector)
+	T tilt_range = 0.5f;		// Slop range for tilt (+/-radians, relative to up vector)
+	T roll_range = 0.5f;		// Slop range for roll (+/-radians, relative to up vector)
+	T target_speed = 10.0f;		// Max target error correction speed (+/- units per second)
+	T dolly_speed = 10.0f;		// Max dolly error correction speed (+/- units per second)
+	T pan_speed = 0.25f;		// Max pan error correction speed (+/- radians per second)
+	T tilt_speed = 0.25f;		// Max tilt error correction speed (+/- radians per second)
+	T roll_speed = 1.0f;		// Max roll error correction speed (+/- radians per second)
 };
 
 
@@ -57,6 +58,11 @@ private:
 	phVkAutoCamConfig<T> auto_cam;
 	bool auto_cam_enable = false;
 public:
+	// Projection (read by phVkEngine::updateSceneData)
+	T fov_y = (T)1.22173;		// Vertical field of view (radians) - default 70 degrees
+	T clip_near = (T)0.1;
+	T clip_far = (T)10000;
+
 	phVkCamera();
 	phVkCamera(Vec3<T> p, Vec3<T> t, Vec3<T> up = Vec3<T>(0, 1, 0));
 	~phVkCamera();
